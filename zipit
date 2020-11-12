@@ -1,0 +1,32 @@
+#!/bin/sh
+
+foldername="hubert_obrzut"
+mkdir -p $foldername
+mkdir -p $foldername/doc
+mkdir -p $foldername/src
+mkdir -p $foldername/doc/gifs
+
+copy_ext_from_to() {
+	from=$1
+	ext=$2
+	to=$3
+	for file in $from/*.$ext; do
+		cp $file $to
+	done
+}
+
+copy_ext_from_to doc tex $foldername/doc
+copy_ext_from_to doc pdf $foldername/doc
+copy_ext_from_to src cpp $foldername/src
+copy_ext_from_to src hpp $foldername/src
+
+cp README.md $foldername
+cp src/Makefile $foldername/src
+cp src/merger $foldername/src
+cp -r src/tests $foldername/src
+cp -r doc/screens $foldername/doc
+cp -r doc/plots $foldername/doc
+cp doc/gifs/giffed.gif $foldername/doc/gifs
+
+zip -r raport.zip $foldername
+rm -rf $foldername
