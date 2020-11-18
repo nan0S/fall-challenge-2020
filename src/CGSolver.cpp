@@ -61,10 +61,12 @@ void _debug(const char* s, const Args&... rest) {
 
 #include <iostream>
 
-struct Delta {
-    int delta[4] = {0};
+using delta_t = int;
 
-    static constexpr int LIMIT = 10;
+struct Delta {
+    delta_t delta[4] = {0};
+
+    static constexpr int LIMIT = 11;
     static constexpr int MAX_DELTA = LIMIT * LIMIT * LIMIT * LIMIT;
 
     inline int id() const {
@@ -154,7 +156,7 @@ struct Action {
 
     Action() = default;
     Action(const int& id, const Delta& delta);
-    
+
     virtual void print() const = 0;
     virtual ~Action() = default;
 };
@@ -169,12 +171,12 @@ struct Order : public Action {
 };
 
 struct Spell : public Action {
-    int times;
+    int maxTimes = 1;
     bool castable;
     bool repeatable;
 
     Spell(const int& id, const Delta& delta,
-        const bool& castable, const bool& repeatable, const int& times=1);
+        const bool& castable, const bool& repeatable);
     void print() const override;
 
     friend std::ostream& operator<<(std::ostream& out, const Spell& spell);
@@ -228,17 +230,25 @@ std::ostream& operator<<(std::ostream& out, const Order& order) {
 }
 
 Spell::Spell(const int& id, const Delta& delta,
-    const bool& castable, const bool& repeatable, const int& times) :
-    Action(id, delta), times(times), castable(castable), repeatable(repeatable) {
+    const bool& castable, const bool& repeatable) :
+    Action(id, delta), castable(castable), repeatable(repeatable) {
+    if (repeatable) {
+        int times = 10;
+        int s = 0;
 
+        for (int i = 0; i < 4; ++i) {
+            times = std::min(times, 10 / std::max(1, std::abs(delta[i])));
+            s += delta[i];
+        }
+        times = std::min(times, 10 / std::max(1, std::abs(s)));
+
+        debug(*this, times);
+        maxTimes = times;        
+    }
 }
 
 void Spell::print() const {
-    std::cout << "CAST " << id;
-    assert(times > 0);
-    if (times > 1)
-        std::cout << times;
-    std::cout << std::endl;
+    std::cout << "CAST " << id << std::endl;
 }
 
 std::ostream& operator<<(std::ostream& out, const Spell& spell) {
@@ -287,7 +297,8 @@ public:
 private:
     static void readData();
     static const Action* pickAction();
-    static const Action* getOrder();
+    static const Action* getDoableOrder();
+    static const Action* search();
     static float eval(const Delta& v, int d);
 
 private:
@@ -297,7 +308,7 @@ private:
     static std::vector<Spell> spells;
     static std::vector<Order> orders;
     static std::vector<Recipe> recipes;
-    
+
     static Rest rest;
 
     static int dist[];
@@ -377,13 +388,34 @@ void Battle::readData() {
 }
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 5)
+    if (roundNumber < 10)
         return &recipes.front();
 
-    auto orderAction = getOrder();
+    auto orderAction = getDoableOrder();
     if (orderAction)
         return orderAction;
 
+    auto serchAction = search();
+    if (serchAction)
+        return serchAction;
+
+    return &rest;
+}
+
+const Action* Battle::getDoableOrder() {
+    const Action* bestAction = nullptr;
+    int bestPrice = -1;
+
+    for (const auto& action : orders)
+        if (!(player.inv < action.delta) && bestPrice < action.price) {
+            bestPrice = action.price;
+            bestAction = &action;
+        }
+
+    return bestAction;
+}
+
+const Action* Battle::search() {
     std::fill(dist, dist + Delta::MAX_DELTA, -1);
     dist[player.inv.id()] = 0;
     std::queue<Delta> q;
@@ -443,20 +475,7 @@ const Action* Battle::pickAction() {
             return &action;
     }
 
-    return &rest;
-}
-
-const Action* Battle::getOrder() {
-    const Action* bestAction = nullptr;
-    int bestPrice = -1;
-
-    for (const auto& action : orders)
-        if (!(player.inv < action.delta) && bestPrice < action.price) {
-            bestPrice = action.price;
-            bestAction = &action;
-        }
-
-    return bestAction;
+    return nullptr;
 }
 
 float Battle::eval(const Delta& v, int d) {

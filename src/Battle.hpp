@@ -13,7 +13,8 @@ public:
 private:
     static void readData();
     static const Action* pickAction();
-    static const Action* getOrder();
+    static const Action* getDoableOrder();
+    static const Action* search();
     static float eval(const Delta& v, int d);
 
 private:
@@ -23,10 +24,10 @@ private:
     static std::vector<Spell> spells;
     static std::vector<Order> orders;
     static std::vector<Recipe> recipes;
-    
+
     static Rest rest;
 
-    static int dist[];
+    static int distance[];
     static int from[];
     static int act[];
 

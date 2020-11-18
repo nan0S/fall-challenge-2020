@@ -1,4 +1,5 @@
 #include "Action.hpp"
+#include "Common.hpp"
 
 #include <cassert>
 
@@ -23,17 +24,24 @@ std::ostream& operator<<(std::ostream& out, const Order& order) {
 }
 
 Spell::Spell(const int& id, const Delta& delta,
-    const bool& castable, const bool& repeatable, const int& times) :
-    Action(id, delta), times(times), castable(castable), repeatable(repeatable) {
+    const bool& castable, const bool& repeatable) :
+    Action(id, delta), castable(castable), repeatable(repeatable) {
+    if (repeatable) {
+        int times = 10;
+        int s = 0;
 
+        for (int i = 0; i < 4; ++i) {
+            times = std::min(times, 10 / std::max(1, std::abs(delta[i])));
+            s += delta[i];
+        }
+        times = std::min(times, 10 / std::max(1, std::abs(s)));
+
+        maxTimes = times;        
+    }
 }
 
 void Spell::print() const {
-    std::cout << "CAST " << id;
-    assert(times > 0);
-    if (times > 1)
-        std::cout << times;
-    std::cout << std::endl;
+    std::cout << "CAST " << id << std::endl;
 }
 
 std::ostream& operator<<(std::ostream& out, const Spell& spell) {

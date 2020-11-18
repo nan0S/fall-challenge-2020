@@ -8,7 +8,7 @@ using delta_t = int;
 struct Delta {
     delta_t delta[4] = {0};
 
-    static constexpr int LIMIT = 10;
+    static constexpr int LIMIT = 11;
     static constexpr int MAX_DELTA = LIMIT * LIMIT * LIMIT * LIMIT;
 
     inline int id() const {

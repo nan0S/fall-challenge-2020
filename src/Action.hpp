@@ -9,7 +9,7 @@ struct Action {
 
     Action() = default;
     Action(const int& id, const Delta& delta);
-    
+
     virtual void print() const = 0;
     virtual ~Action() = default;
 };
@@ -24,12 +24,12 @@ struct Order : public Action {
 };
 
 struct Spell : public Action {
-    int times;
+    int maxTimes = 1;
     bool castable;
     bool repeatable;
 
     Spell(const int& id, const Delta& delta,
-        const bool& castable, const bool& repeatable, const int& times=1);
+        const bool& castable, const bool& repeatable);
     void print() const override;
 
     friend std::ostream& operator<<(std::ostream& out, const Spell& spell);

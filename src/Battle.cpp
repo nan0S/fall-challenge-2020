@@ -15,7 +15,7 @@ std::vector<Recipe> Battle::recipes;
 
 Rest Battle::rest;
 
-int Battle::dist[Delta::MAX_DELTA];
+int Battle::distance[Delta::MAX_DELTA];
 int Battle::from[Delta::MAX_DELTA];
 int Battle::act[Delta::MAX_DELTA];
 
@@ -70,15 +70,36 @@ void Battle::readData() {
 }
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 5)
+    if (roundNumber < 10)
         return &recipes.front();
 
-    auto orderAction = getOrder();
+    auto orderAction = getDoableOrder();
     if (orderAction)
         return orderAction;
 
-    std::fill(dist, dist + Delta::MAX_DELTA, -1);
-    dist[player.inv.id()] = 0;
+    auto serchAction = search();
+    if (serchAction)
+        return serchAction;
+
+    return &rest;
+}
+
+const Action* Battle::getDoableOrder() {
+    const Action* bestAction = nullptr;
+    int bestPrice = -1;
+
+    for (const auto& action : orders)
+        if (!(player.inv < action.delta) && bestPrice < action.price) {
+            bestPrice = action.price;
+            bestAction = &action;
+        }
+
+    return bestAction;
+}
+
+const Action* Battle::search() {
+    std::fill(distance, distance + Delta::MAX_DELTA, -1);
+    distance[player.inv.id()] = 0;
     std::queue<Delta> q;
     q.push(player.inv);
 
@@ -90,7 +111,7 @@ const Action* Battle::pickAction() {
         q.pop();
 
         int vid = v.id();
-        int d = dist[vid];
+        int d = distance[vid];
 
         float value = eval(v, d);
         if (value > bestValue) {
@@ -103,8 +124,8 @@ const Action* Battle::pickAction() {
             if (!(v < action.delta)) {
                 Delta s = v + action.delta;
                 int id = s.id();
-                if (dist[id] == -1) {
-                    dist[id] = d + 1;
+                if (distance[id] == -1) {
+                    distance[id] = d + 1;
                     from[id] = vid;
                     act[id] = i;
                     q.push(s);
@@ -116,14 +137,14 @@ const Action* Battle::pickAction() {
     debug(bestState, bestValue);
 
     int id = bestState.id();
-    int d = dist[id];
+    int d = distance[id];
     assert(d >= 1);
     std::set<int> actions;
 
     while (d > 0) {
         actions.insert(act[id]);
         id = from[id];
-        d = dist[id];
+        d = distance[id];
     }
 
     for (int idx : actions)
@@ -136,20 +157,7 @@ const Action* Battle::pickAction() {
             return &action;
     }
 
-    return &rest;
-}
-
-const Action* Battle::getOrder() {
-    const Action* bestAction = nullptr;
-    int bestPrice = -1;
-
-    for (const auto& action : orders)
-        if (!(player.inv < action.delta) && bestPrice < action.price) {
-            bestPrice = action.price;
-            bestAction = &action;
-        }
-
-    return bestAction;
+    return nullptr;
 }
 
 float Battle::eval(const Delta& v, int d) {
