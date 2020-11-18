@@ -1,6 +1,13 @@
 #!/bin/sh
 
 DEPS=(
+	Common.hpp
+	Common.cpp
+	Delta.hpp
+	Delta.cpp
+	Battle.hpp
+	Battle.cpp
+	main.cpp
 )
 
 output="CGSolver"

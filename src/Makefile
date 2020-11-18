@@ -1,13 +1,14 @@
-TARGET = test
+TARGET = witch-battle
 
-OBJS = test.o
+OBJS = Battle.o \
+	Common.o \
+	Delta.o
 
 CXX = g++
 CXXFLAGS = -std=c++17 -DLOCAL -Wall -Wextra -Wreorder -Ofast -O3 -flto -march=native -s
 
 DFLAGS = -g -fsanitize=address -fsanitize=undefined
 RFLAGS = -DNDEBUG
-OPTS = test
 
 all: $(TARGET)
 
@@ -18,10 +19,10 @@ debug: CXXFLAGS += $(DFLAGS)
 debug: $(TARGET)
 
 $(TARGET): $(OBJS) main.o
-	$(CXX) $(CXXFLAGS) $(LIBS) $(OPTS) -o $@ $^
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 %.o: %.cpp %.hpp
-	$(CXX) $(CXXFLAGS) $(OPTS) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
 	rm -f *.o
