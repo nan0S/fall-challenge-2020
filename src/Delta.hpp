@@ -3,14 +3,18 @@
 
 #include <iostream>
 
+using delta_t = int;
+
 struct Delta {
-    int delta[4] = {0};
-    static constexpr int MAX_DELTA = 10 * 10 * 10 * 10;
+    delta_t delta[4] = {0};
+
+    static constexpr int LIMIT = 10;
+    static constexpr int MAX_DELTA = LIMIT * LIMIT * LIMIT * LIMIT;
 
     inline int id() const {
         int id = 0;
         for (int i = 0; i < 4; ++i)
-            id = id * 10 + delta[i];
+            id = id * LIMIT + delta[i];
         return id;
     }
 
@@ -20,17 +24,9 @@ struct Delta {
     bool operator<(const Delta& o) const;
     bool operator>(const Delta& o) const;
 
-    friend std::ostream& operator<<(std::ostream& out, const Delta& o) {
-        return out << "{" << o.delta[0] << "," << o.delta[1] << ","
-                   << o.delta[2] << "," << o.delta[3] << "}";
-    }
-
-    friend Delta operator+(const Delta& d1, const Delta& d2) {
-        Delta res;
-        for (int i = 0; i < 4; ++i)
-            res[i] = d1[i] + d2[i];
-        return res;
-    }
+    friend std::istream& operator>>(std::istream& in, Delta& d);
+    friend std::ostream& operator<<(std::ostream& out, const Delta& o);
+    friend Delta operator+(const Delta& d1, const Delta& d2);
 
     static Delta decode(int id);
 };

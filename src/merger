@@ -5,6 +5,8 @@ DEPS=(
 	Common.cpp
 	Delta.hpp
 	Delta.cpp
+	Action.hpp
+	Action.cpp
 	Battle.hpp
 	Battle.cpp
 	main.cpp

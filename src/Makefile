@@ -2,7 +2,8 @@ TARGET = witch-battle
 
 OBJS = Battle.o \
 	Common.o \
-	Delta.o
+	Delta.o \
+	Action.o
 
 CXX = g++
 CXXFLAGS = -std=c++17 -DLOCAL -Wall -Wextra -Wreorder -Ofast -O3 -flto -march=native -s

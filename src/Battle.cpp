@@ -4,45 +4,83 @@
 #include <queue>
 #include <cassert>
 #include <set>
+#include <vector>
 
-Delta Battle::mInv, Battle::oInv;
+Witch Battle::player;
+Witch Battle::opponent;
+
 std::vector<Spell> Battle::spells;
 std::vector<Order> Battle::orders;
 std::vector<Recipe> Battle::recipes;
+
+Rest Battle::rest;
 
 int Battle::dist[Delta::MAX_DELTA];
 int Battle::from[Delta::MAX_DELTA];
 int Battle::act[Delta::MAX_DELTA];
 
-float Battle::eval(const Delta& v, int d) {
-    int maxPrice = 0;
-    for (const auto& action : orders)
-        if (!(v < action.delta) && maxPrice < action.price)
-            maxPrice = action.price;
-    return d == 0 ? 0 : float(maxPrice) / d;
-}
+int Battle::roundNumber = 0;
 
-int Battle::getOrder() {
-    int id = -1, bestPrice = -1;
-    for (const auto& action : orders)
-        if (!(mInv < action.delta) && bestPrice < action.price) {
-            bestPrice = action.price;
-            id = action.id;
-        }
-    return id;
-}
+void Battle::start() {
+    orders.reserve(100);
+    spells.reserve(100);
+    recipes.reserve(100);
 
-void Battle::pickAction() {
-    int brewAction = getOrder();
-    if (brewAction != -1) {
-        std::cout << "BREW " << brewAction << std::endl;
-        return;
+    while (true) {
+        readData();
+        pickAction()->print();
+
+        orders.clear();
+        spells.clear();
+        recipes.clear();
+        
+        ++roundNumber;
     }
+}
+
+void Battle::readData() {
+    int actionCount;
+    std::cin >> actionCount;
+
+    while (actionCount--) {
+        int actionId;
+        std::string actionStr;
+        std::cin >> actionId >> actionStr;
+
+        Delta delta;
+        std::cin >> delta;
+
+        int price, tomeIndex, taxCount;
+        bool castable, repeatable;
+        std::cin >> price >> tomeIndex >> taxCount;
+        std::cin >> castable >> repeatable;
+
+        if (actionStr == "BREW")
+            orders.emplace_back(actionId, delta, price);
+        else if (actionStr == "CAST")
+            spells.emplace_back(actionId, delta, castable, repeatable);
+        else if (actionStr == "LEARN")
+            recipes.emplace_back(actionId, delta, tomeIndex, taxCount, repeatable);
+        else
+            assert(actionStr == "OPPONENT_CAST");
+    }     
+
+    std::cin >> player;
+    std::cin >> opponent;
+}
+
+const Action* Battle::pickAction() {
+    if (roundNumber < 5)
+        return &recipes.front();
+
+    auto orderAction = getOrder();
+    if (orderAction)
+        return orderAction;
 
     std::fill(dist, dist + Delta::MAX_DELTA, -1);
-    dist[mInv.id()] = 0;
+    dist[player.inv.id()] = 0;
     std::queue<Delta> q;
-    q.push(mInv);
+    q.push(player.inv);
 
     float bestValue = -1.f;
     Delta bestState;
@@ -92,75 +130,34 @@ void Battle::pickAction() {
         debug(spells[idx]);
 
     assert(!actions.empty());
-    
     for (int idx : actions) {
         const auto& action = spells[idx];
-        if (action.castable && !(mInv < action.delta)) {
-            std::cout << "CAST " << action.id << std::endl;
-            return;
-        }
+        if (action.castable && !(player.inv < action.delta))
+            return &action;
     }
 
-    std::cout << "REST" << std::endl;
+    return &rest;
 }
 
-void Battle::start() {
-    int roundIdx = 0;
-    
-    while (true) {
-        int actionCount;
-        std::cin >> actionCount;
+const Action* Battle::getOrder() {
+    const Action* bestAction = nullptr;
+    int bestPrice = -1;
 
-        while (actionCount--) {
-            int actionId;
-            std::string actionStr;
-            std::cin >> actionId >> actionStr;
+    for (const auto& action : orders)
+        if (!(player.inv < action.delta) && bestPrice < action.price) {
+            bestPrice = action.price;
+            bestAction = &action;
+        }
 
-            int delta[4];
-            for (int i = 0; i < 4; ++i)
-                std::cin >> delta[i];
+    return bestAction;
+}
 
-            int price, tomeIndex, taxCount;
-            bool castable, repeatable;
-            std::cin >> price >> tomeIndex >> taxCount;
-            std::cin >> castable >> repeatable;
+float Battle::eval(const Delta& v, int d) {
+    int maxPrice = 0;
 
-            if (actionStr == "BREW")
-                orders.push_back({
-                    actionId,
-                    {delta[0], delta[1], delta[2], delta[3]}, 
-                    price});
-            else if (actionStr == "CAST")
-                spells.push_back({
-                    actionId,
-                    {delta[0], delta[1], delta[2], delta[3]},
-                    castable
-                });
-            else if (actionStr == "LEARN")
-                recipes.push_back({
-                    actionId,
-                    {delta[0], delta[1], delta[2], delta[3]},
-                    tomeIndex,
-                    taxCount,
-                    repeatable
-                });
-        }     
+    for (const auto& action : orders)
+        if (!(v < action.delta) && maxPrice < action.price)
+            maxPrice = action.price;
 
-        for (int i = 0; i < 4; ++i)
-            std::cin >> mInv[i];
-        int mScore; std::cin >> mScore;
-        for (int i = 0; i < 4; ++i)
-            std::cin >> oInv[i];
-        int oScore; std::cin >> oScore;
-
-        if (roundIdx < 5)
-            std::cout << "LEARN " << recipes.front().id << std::endl;
-        else
-            pickAction();
-
-        orders.clear();
-        spells.clear();
-        recipes.clear();
-        ++roundIdx;
-    }
+    return d == 0 ? 0 : float(maxPrice) / d;
 }

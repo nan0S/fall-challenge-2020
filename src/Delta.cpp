@@ -24,7 +24,7 @@ bool Delta::operator<(const Delta& o) const {
             return true;
         s += diff;
     }
-    return s > 10; 
+    return s > LIMIT; 
 }
 
 bool Delta::operator>(const Delta& o) const {
@@ -34,9 +34,27 @@ bool Delta::operator>(const Delta& o) const {
 Delta Delta::decode(int id) {
     Delta res;
     for (int i = 3; i >= 0; --i) {
-        res[i] = id % 10;
-        id /= 10;
+        res[i] = id % LIMIT;
+        id /= LIMIT;
     }
     assert(id == 0);
+    return res;
+}
+
+std::istream& operator>>(std::istream& in, Delta& d) {
+    return in >> d.delta[0] >> d.delta[1]
+              >> d.delta[2] >> d.delta[3];
+}
+
+
+std::ostream& operator<<(std::ostream& out, const Delta& o) {
+    return out << "{" << o.delta[0] << "," << o.delta[1] << ","
+               << o.delta[2] << "," << o.delta[3] << "}";
+}
+
+Delta operator+(const Delta& d1, const Delta& d2) {
+    Delta res;
+    for (int i = 0; i < 4; ++i)
+        res[i] = d1[i] + d2[i];
     return res;
 }
