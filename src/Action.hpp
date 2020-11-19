@@ -25,6 +25,7 @@ struct Order : public Action {
 
 struct Spell : public Action {
     int maxTimes = 1;
+    int times = 1;
     bool castable;
     bool repeatable;
 

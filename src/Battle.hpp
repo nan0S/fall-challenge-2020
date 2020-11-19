@@ -12,10 +12,13 @@ public:
 
 private:
     static void readData();
+    #ifdef DEBUG
+    static void writeData();
+    #endif
     static const Action* pickAction();
     static const Action* getDoableOrder();
     static const Action* search();
-    static float eval(const Delta& v, int d);
+    static float eval(const Delta& v, int dist);
 
 private:
     static Witch player;
@@ -29,9 +32,17 @@ private:
 
     static int distance[];
     static int from[];
-    static int act[];
+    static int fromidx[];
+    static int fromtimes[];
+
+    struct Info {
+        int id;
+        int dist;
+    };
+    static std::vector<Info> orderCost;
 
     static int roundNumber;
+    static int enemyOrdersDone;
 };
 
 #endif /* BATTLE_HPP */

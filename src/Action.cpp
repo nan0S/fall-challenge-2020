@@ -41,7 +41,11 @@ Spell::Spell(const int& id, const Delta& delta,
 }
 
 void Spell::print() const {
-    std::cout << "CAST " << id << std::endl;
+    std::cout << "CAST " << id;
+    assert(times >= 1);
+    if (times > 1)
+        std::cout << " " << times;
+    std::cout << std::endl;
 }
 
 std::ostream& operator<<(std::ostream& out, const Spell& spell) {

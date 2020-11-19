@@ -24,7 +24,7 @@ bool Delta::operator<(const Delta& o) const {
             return true;
         s += diff;
     }
-    return s > LIMIT; 
+    return s > 10; 
 }
 
 bool Delta::operator>(const Delta& o) const {

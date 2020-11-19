@@ -13,9 +13,10 @@ DEPS=(
 )
 
 output="CGSolver"
-cat "${DEPS[@]}" > $output.cpp
-
-sed -i -e '/HPP/d' -e '/include "/d' $output.cpp
+cat "${DEPS[@]}" > tempfile
+sed -i -e '/HPP/d' -e '/include "/d' tempfile
+echo '#define DEBUG' | cat - tempfile > $output.cpp
+rm tempfile
 
 g++ $output.cpp -o $output -std=c++17 -Wall -Wextra -Wreorder -Ofast -O3 -flto -march=native -s
 rm $output

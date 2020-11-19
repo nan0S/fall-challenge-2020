@@ -4,13 +4,13 @@
 
 #include <iostream>
 
+constexpr int INF = 1e9;
+
 #if defined(LOCAL) && !defined(NDEBUG)
 #define DEBUG
 #endif
 
 #ifdef DEBUG
-
-constexpr int INF = 1e9;
 
 inline void __debug(const char* s, const char*) {
     std::cerr << s << ": ";
