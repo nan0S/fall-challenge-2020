@@ -33,7 +33,7 @@ bool Delta::operator>(const Delta& o) const {
 
 Delta Delta::decode(int id) {
     Delta res;
-    for (int i = 3; i >= 0; --i) {
+    for (int i = 0; i < 4; ++i) {
         res[i] = id % LIMIT;
         id /= LIMIT;
     }

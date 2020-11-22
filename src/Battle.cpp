@@ -80,10 +80,10 @@ void Battle::readData() {
     if (opponent.score != lastEnemyScore) {
         lastEnemyScore = opponent.score;
         ++enemyOrdersDone;
-        debug(enemyOrdersDone);
     }
 }
 
+#ifdef DEBUG
 void Battle::writeData() {
     for (const auto& order : orders)
         debug(order);
@@ -92,6 +92,7 @@ void Battle::writeData() {
     for (const auto& recipe : recipes)
         debug(recipe);    
 }
+#endif
 
 const Action* Battle::pickAction() {
     if (roundNumber < 7)

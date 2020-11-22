@@ -13,7 +13,7 @@ struct Delta {
 
     inline int id() const {
         int id = 0;
-        for (int i = 0; i < 4; ++i)
+        for (int i = 3; i >= 0; --i)
             id = id * LIMIT + delta[i];
         return id;
     }
