@@ -28,23 +28,6 @@ bool Delta::canApply(const Delta& d) const {
     return s <= 10; 
 }
 
-eval_t Delta::eval() const {
-    eval_t value = 0;
-    for (int i = 0; i < 4; ++i)
-        value += delta[i] * (i + 2);
-    return value;
-}
-
-Delta Delta::decode(int id) {
-    Delta res;
-    for (int i = 0; i < 4; ++i) {
-        res[i] = id % LIMIT;
-        id /= LIMIT;
-    }
-    assert(id == 0);
-    return res;
-}
-
 std::istream& operator>>(std::istream& in, Delta& d) {
     return in >> d.delta[0] >> d.delta[1]
               >> d.delta[2] >> d.delta[3];

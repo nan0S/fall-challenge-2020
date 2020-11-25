@@ -9,6 +9,9 @@ using eval_t = float;
 
 constexpr int INF = 1e9;
 
+#define low(x) ((x) & (-(x))) // lowest bit
+#define bits(x) (31 - __builtin_clz(x)) // floor(log2(x))
+
 #if defined(LOCAL) && !defined(NDEBUG)
 #define DEBUG
 #endif

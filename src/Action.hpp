@@ -3,6 +3,8 @@
 
 #include "Delta.hpp"
 
+#include <array>
+
 struct Action {
     Delta delta;
     int id;
@@ -24,6 +26,7 @@ struct Order : public Action {
 };
 
 struct Spell : public Action {
+    std::array<Delta, 10> repeatedDeltas;
     int maxTimes = 1;
     int curTimes = 1;
     bool castable;
@@ -45,8 +48,6 @@ struct Recipe : public Action {
         const int &tomeIndex, const int& taxCount, const bool& repeatable);
     void print() const override;
 
-    eval_t eval() const;
-
     friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
 };
 
@@ -57,12 +58,18 @@ struct Rest : public Action {
 
 struct Witch {
     Delta inv;
-    int score;
+    float score;
 
-    eval_t eval() const;
+    inline eval_t eval() const;
 
     friend std::istream& operator>>(std::istream& in, Witch& w);
     friend std::ostream& operator<<(std::ostream& out, const Witch& w);
 };
+
+eval_t Witch::eval() const {
+    eval_t value = score;
+    value += inv.eval();
+    return value;
+}
 
 #endif /* ACTION_HPP */

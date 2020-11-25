@@ -8,79 +8,114 @@
 #include <vector>
 #include <algorithm>
 #include <math.h>
+#include <array>
+#include <cstring>
 
 bool State::operator<(const State& s) const {
-    return eval() < s.eval();
-}
-
-eval_t State::eval() const {
-    eval_t value = player.eval();
-    value += 5 * ordersDone * ordersDone;
-    return value;
+    // return eval() < s.eval();
+    return player.score < s.player.score;
 }
 
 std::ostream& operator<<(std::ostream& out, const State& s) {
     out << s.player << "\n";
-    out << "ordersDone: " << s.ordersDone << "\n";
-    out << "Spells:\n";
-    for (const auto& spell : s.spells)
-        out << "\t" << spell << "\n";
-    out << "Orders:\n";
-    for (const auto& order : s.orders)
-        out << "\t" << order << "\n";
-    out << "Recipes:\n";
-    for (const auto& recipe : s.recipes)
-        out << "\t" << recipe << "\n";
+    out << "ordersDone: " << s.getOrdersDone() << "\n";
+
+    for (const auto& hist : s.history)
+        out << hist << " ";
+
+    // int spellCount = Battle::spells.size();
+    // out << "Spells:\n";
+    // for (int i = 0; i < spellCount; ++i) {
+    //     auto& spell = Battle::spells[i];
+    //     auto tmp = spell.castable;
+    //     spell.castable = s.isCastable(i);
+    //     out << "\t" << spell << "\n";
+    //     spell.castable = tmp;
+    // }
+
+    // int orderCount = Battle::orders.size();
+    // out << "Orders:\n";
+    // for (int i = 0; i < orderCount; ++i) {
+    //     const auto& order = Battle::orders[i];
+    //     out << "\t" << (s.isOrderDone(i) ? "DONE " : "UNDONE ") << order << "\n";
+    // }
     return out;
 }
 
-std::vector<State> State::getNeighbors() const {
-    std::vector<State> neighbors;
+int State::getNeighbors(std::array<State, MAX_NEIGHBORS>& neighbours) const {
 
-    for (int i = 0; i < int(orders.size()); ++i) {
-        const auto& order = orders[i];
+    int neighborCount = 0;
+
+    int ordersUndoneMask = this->ordersUndoneMask;
+    while (ordersUndoneMask) {
+        int nextOrderBit = low(ordersUndoneMask);
+        int i = bits(nextOrderBit);
+        const auto& order = Battle::orders[i];
+
         if (player.inv.canApply(order.delta)) {
-            State neighbor = *this;
-            neighbor.player.inv += order.delta;
-            neighbor.player.score += order.price;
-            neighbor.ordersDone++;
+            auto& neighbor = neighbours[neighborCount++];
+            neighbor = *this;
+            neighbor.player.inv = player.inv + order.delta;
+            neighbor.player.score =  player.score + 100 * gamma * order.price + gamma * order.delta.eval();
+            neighbor.castableSpellsMask = castableSpellsMask;
+            neighbor.ordersUndoneMask = this->ordersUndoneMask ^ nextOrderBit;
+            neighbor.gamma = gamma * DECAY;
+
+            neighbor.history.push_back(player.inv);
+
             if (firstAction == nullptr)
                 neighbor.firstAction = &Battle::orders[i];
-            neighbors.push_back(neighbor);
         }
+
+        ordersUndoneMask ^= nextOrderBit;
     }
 
-    for (int i = 0; i < int(spells.size()); ++i) {
-        const auto& s = spells[i];
-        if (s.castable) {
-            auto spell = s;
-            for (int times = 0; times < s.maxTimes; ++times) {
-                if (player.inv.canApply(spell.delta)) {
-                    State neighbor = *this;
-                    neighbor.player.inv += spell.delta;
-                    neighbor.spells[i].castable = false;
-                    if (firstAction == nullptr) {
-                        Battle::tSpells.push_back(Battle::spells[i]);
-                        Battle::tSpells.back().curTimes = times + 1;
-                        neighbor.firstAction = &Battle::tSpells.back();
-                    }
-                    neighbors.push_back(neighbor);
+    int castableSpellsMask = this->castableSpellsMask;
+    while (castableSpellsMask) {
+        int nextSpellBit = low(castableSpellsMask);
+        int i = bits(nextSpellBit);
+        const auto& s = Battle::spells[i];
+
+        for (int times = 0; times < s.maxTimes; ++times) {
+            const auto& repeatedDelta = s.repeatedDeltas[times];
+
+            if (player.inv.canApply(repeatedDelta)) {
+                auto& neighbor = neighbours[neighborCount++];
+                // std::memcpy(&neighbor, this, sizeof(State));
+                neighbor = *this;
+                neighbor.player.inv += repeatedDelta;
+                neighbor.player.score += repeatedDelta.eval() * gamma;
+                neighbor.castableSpellsMask ^= nextSpellBit;
+                neighbor.gamma *= DECAY;
+
+                neighbor.history = history;
+                neighbor.history.push_back(player.inv);
+
+                if (firstAction == nullptr) {
+                    Battle::tSpells.push_back(s);
+                    Battle::tSpells.back().curTimes = times + 1;
+                    neighbor.firstAction = &Battle::tSpells.back();
                 }
-                else
-                    break;
-                spell.delta += s.delta;
-            } 
+            }
         }
+
+        castableSpellsMask ^= nextSpellBit;
     }
 
-    auto neighbor = *this;
-    for (auto& spell : neighbor.spells)
-        spell.castable = true;
+    auto& neighbor = neighbours[neighborCount++];
+    // std::memcpy(&neighbor, this, sizeof(State)); 
+    neighbor = *this;
+    neighbor.castableSpellsMask = (1 << int(Battle::spells.size())) - 1;
+    neighbor.gamma *= DECAY;
+
+    neighbor.history = history;
+    neighbor.history.push_back(player.inv);
     if (firstAction == nullptr)
         neighbor.firstAction = &Battle::rest;
-    neighbors.push_back(neighbor);
 
-    return neighbors;
+    assert(neighborCount <= MAX_NEIGHBORS);
+
+    return neighborCount;
 }
 
 Witch Battle::player;
@@ -106,9 +141,9 @@ void Battle::start() {
 
     while (true) {
         readData();
-        #ifdef DEBUG
+        // #ifdef DEBUG
         // writeData();
-        #endif
+        // #endif
         pickAction()->print();
 
         orders.clear();
@@ -150,13 +185,13 @@ void Battle::readData() {
     std::cin >> player;
     std::cin >> opponent;
 
-    static int lastPlayerScore = 0;
+    static float lastPlayerScore = 0;
     if (player.score != lastPlayerScore) {
         lastPlayerScore = player.score;
         ++playerOrdersDone;
     }
 
-    static int lastEnemyScore = 0;
+    static float lastEnemyScore = 0;
     if (opponent.score != lastEnemyScore) {
         lastEnemyScore = opponent.score;
         ++Options::enemyOrdersDone;
@@ -190,18 +225,20 @@ const Action* Battle::search() {
     q.push(initialState);
 
     float timeLimit = roundNumber == 0 ? 1000 : 50;
+    std::array<State, State::MAX_NEIGHBORS> neighbors;
     int depth = 0;
 
     for (Timer timer(timeLimit); timer.isTimeLeft(); ++depth) {       
         assert(!q.empty());
+        // debug("DEPTH:", depth, q.top());
 
         for (int i = 0; i < beamWidth; ++i) {
             const auto state = q.top();
             q.pop();
 
-            auto neighbors = state.getNeighbors();
-            for (const auto& neighbor : neighbors)
-                layer.push(neighbor);
+            int neighborCount = state.getNeighbors(neighbors);
+            for (int i = 0; i < neighborCount; ++i)
+                layer.push(neighbors[i]);
 
             if (i != beamWidth - 1 && q.empty()) {
                 debug("Exiting loop early - not enough states!");
@@ -226,10 +263,13 @@ const Action* Battle::search() {
 State Battle::getInitialState() {
     State initialState;
     initialState.player = player;
-    initialState.player.score = 0;
-    initialState.ordersDone = playerOrdersDone;
-    initialState.spells = spells;
-    initialState.orders = orders;
-    initialState.recipes = recipes;
+    initialState.player.score = 0.f;
+    initialState.firstAction = nullptr;
+    initialState.castableSpellsMask = 0;
+    for (int i = 0; i < int(spells.size()); ++i)
+        if (spells[i].castable)
+            initialState.castableSpellsMask |= 1 << i;
+    initialState.ordersUndoneMask = (1 << int(orders.size())) - 1;
+    initialState.gamma = 1.f;
     return initialState;
 }

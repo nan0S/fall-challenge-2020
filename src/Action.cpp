@@ -41,6 +41,12 @@ Spell::Spell(const int& id, const Delta& delta,
         if (supply > 0)
             maxTimes = std::min(maxTimes, 10 / supply);
     }
+
+    auto repeatedDelta = delta;
+    for (int i = 0; i < maxTimes; ++i) {
+        repeatedDeltas[i] = repeatedDelta;
+        repeatedDelta += delta;
+    }
 }
 
 void Spell::print() const {
@@ -65,10 +71,6 @@ void Recipe::print() const {
     std::cout << "LEARN " << id << std::endl;
 }
 
-eval_t Recipe::eval() const {
-    return delta.eval() + repeatable * 5;
-}
-
 std::ostream& operator<<(std::ostream& out, const Recipe& r) {
     return out << "RECIPE: id=" << r.id 
         << ", delta={" << r.delta << ", "
@@ -83,12 +85,6 @@ Rest::Rest() {
 
 void Rest::print() const {
     std::cout << "REST" << std::endl;
-}
-
-eval_t Witch::eval() const {
-    eval_t value = score * 3;
-    value += inv.eval();
-    return value;
 }
 
 std::istream& operator>>(std::istream& in, Witch& w) {
