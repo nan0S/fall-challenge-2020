@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+using eval_t = float;
+
 constexpr int INF = 1e9;
 
 #if defined(LOCAL) && !defined(NDEBUG)
@@ -22,8 +24,7 @@ void __debug(const char* s, const T& x) {
 }
 
 template<typename T, typename... Args>
-void __debug(const char* s, const T& x, const Args&... rest)
-{
+void __debug(const char* s, const T& x, const Args&... rest) {
     int bracket = 0;
     char c;
     while ((c = *s) != ',' || bracket)

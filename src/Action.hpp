@@ -20,12 +20,12 @@ struct Order : public Action {
     Order(const int& id, const Delta& delta, const int& price);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Order& order);
+    friend std::ostream& operator<<(std::ostream& out, const Order& o);
 };
 
 struct Spell : public Action {
     int maxTimes = 1;
-    int times = 1;
+    int curTimes = 1;
     bool castable;
     bool repeatable;
 
@@ -33,7 +33,7 @@ struct Spell : public Action {
         const bool& castable, const bool& repeatable);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Spell& spell);
+    friend std::ostream& operator<<(std::ostream& out, const Spell& s);
 };
 
 struct Recipe : public Action {
@@ -45,7 +45,9 @@ struct Recipe : public Action {
         const int &tomeIndex, const int& taxCount, const bool& repeatable);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Recipe& recipe);
+    eval_t eval() const;
+
+    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
 };
 
 struct Rest : public Action {
@@ -57,7 +59,10 @@ struct Witch {
     Delta inv;
     int score;
 
-    friend std::istream& operator>>(std::istream& in, Witch& witch);
+    eval_t eval() const;
+
+    friend std::istream& operator>>(std::istream& in, Witch& w);
+    friend std::ostream& operator<<(std::ostream& out, const Witch& w);
 };
 
 #endif /* ACTION_HPP */

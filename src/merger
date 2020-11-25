@@ -3,6 +3,8 @@
 DEPS=(
 	Common.hpp
 	Common.cpp
+	Options.hpp
+	Options.cpp
 	Delta.hpp
 	Delta.cpp
 	Action.hpp

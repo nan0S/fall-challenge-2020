@@ -3,12 +3,41 @@
 
 #include "Delta.hpp"
 #include "Action.hpp"
+#include "Common.hpp"
 
 #include <vector>
+
+struct State {
+    Witch player;
+
+    std::vector<Spell> spells;
+    std::vector<Order> orders;
+    std::vector<Recipe> recipes;
+
+    const Action* firstAction = nullptr;
+    int ordersDone = 0;
+
+    std::vector<State> getNeighbors() const;
+    eval_t eval() const;
+
+    bool operator<(const State& s) const;
+    friend std::ostream& operator<<(std::ostream& out, const State& s);
+};
 
 class Battle {
 public:
     static void start();
+
+public:
+    static std::vector<Spell> spells;
+    static std::vector<Order> orders;
+    static std::vector<Recipe> recipes;
+    static Rest rest;
+
+    static std::vector<Spell> tSpells;
+
+    static int playerOrdersDone;
+    static int enemyOrdersDone;
 
 private:
     static void readData();
@@ -16,33 +45,19 @@ private:
     static void writeData();
     #endif
     static const Action* pickAction();
-    static const Action* getDoableOrder();
+    static const Action* chooseRecipe();
     static const Action* search();
-    static float eval(const Delta& v, int dist);
+    static State getInitialState();
 
 private:
     static Witch player;
     static Witch opponent;
 
-    static std::vector<Spell> spells;
-    static std::vector<Order> orders;
-    static std::vector<Recipe> recipes;
-
-    static Rest rest;
-
-    static int distance[];
-    static int from[];
-    static int fromidx[];
-    static int fromtimes[];
-
-    struct Info {
-        int id;
-        int dist;
-    };
-    static std::vector<Info> orderCost;
-
     static int roundNumber;
-    static int enemyOrdersDone;
+
+    static constexpr int beamDepth = 5;
+    static constexpr int beamWidth = 5;
+    static constexpr int recipeConsider = 2;
 };
 
 #endif /* BATTLE_HPP */

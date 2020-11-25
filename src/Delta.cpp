@@ -16,19 +16,23 @@ Delta& Delta::operator+=(const Delta& o) {
     return *this;
 }
 
-bool Delta::operator<(const Delta& o) const {
+bool Delta::canApply(const Delta& d) const {
     int s = 0;
     for (int i = 0; i < 4; ++i) {
-        int diff = delta[i] + o[i];
+        int diff = delta[i] + d[i];
         if (diff < 0)
-            return true;
+            return false;
         s += diff;
     }
-    return s > 10; 
+    assert(s >= 0);
+    return s <= 10; 
 }
 
-bool Delta::operator>(const Delta& o) const {
-    return o < *this;
+eval_t Delta::eval() const {
+    eval_t value = 0;
+    for (int i = 0; i < 4; ++i)
+        value += delta[i] * (i + 2);
+    return value;
 }
 
 Delta Delta::decode(int id) {

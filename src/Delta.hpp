@@ -1,6 +1,8 @@
 #ifndef DELTA_HPP
 #define DELTA_HPP
 
+#include "Common.hpp"
+
 #include <iostream>
 
 using delta_t = int;
@@ -9,20 +11,13 @@ struct Delta {
     delta_t delta[4] = {0};
 
     static constexpr int LIMIT = 11;
-    static constexpr int MAX_DELTA = LIMIT * LIMIT * LIMIT * LIMIT;
 
-    inline int id() const {
-        int id = 0;
-        for (int i = 3; i >= 0; --i)
-            id = id * LIMIT + delta[i];
-        return id;
-    }
+    bool canApply(const Delta& d) const;
+    eval_t eval() const;
 
     int& operator[](const int& idx);
     const int& operator[](const int& idx) const;
     Delta& operator+=(const Delta& o);
-    bool operator<(const Delta& o) const;
-    bool operator>(const Delta& o) const;
 
     friend std::istream& operator>>(std::istream& in, Delta& d);
     friend std::ostream& operator<<(std::ostream& out, const Delta& o);

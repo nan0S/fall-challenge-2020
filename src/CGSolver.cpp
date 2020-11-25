@@ -3,6 +3,8 @@
 
 #include <iostream>
 
+using eval_t = float;
+
 constexpr int INF = 1e9;
 
 #if defined(LOCAL) && !defined(NDEBUG)
@@ -21,8 +23,7 @@ void __debug(const char* s, const T& x) {
 }
 
 template<typename T, typename... Args>
-void __debug(const char* s, const T& x, const Args&... rest)
-{
+void __debug(const char* s, const T& x, const Args&... rest) {
     int bracket = 0;
     char c;
     while ((c = *s) != ',' || bracket)
@@ -59,6 +60,13 @@ void _debug(const char* s, const Args&... rest) {
 #endif
 
 
+namespace Options {
+	extern int enemyOrdersDone;
+}
+
+
+int Options::enemyOrdersDone = 0;
+
 
 #include <iostream>
 
@@ -68,20 +76,13 @@ struct Delta {
     delta_t delta[4] = {0};
 
     static constexpr int LIMIT = 11;
-    static constexpr int MAX_DELTA = LIMIT * LIMIT * LIMIT * LIMIT;
 
-    inline int id() const {
-        int id = 0;
-        for (int i = 0; i < 4; ++i)
-            id = id * LIMIT + delta[i];
-        return id;
-    }
+    bool canApply(const Delta& d) const;
+    eval_t eval() const;
 
     int& operator[](const int& idx);
     const int& operator[](const int& idx) const;
     Delta& operator+=(const Delta& o);
-    bool operator<(const Delta& o) const;
-    bool operator>(const Delta& o) const;
 
     friend std::istream& operator>>(std::istream& in, Delta& d);
     friend std::ostream& operator<<(std::ostream& out, const Delta& o);
@@ -107,24 +108,28 @@ Delta& Delta::operator+=(const Delta& o) {
     return *this;
 }
 
-bool Delta::operator<(const Delta& o) const {
+bool Delta::canApply(const Delta& d) const {
     int s = 0;
     for (int i = 0; i < 4; ++i) {
-        int diff = delta[i] + o[i];
+        int diff = delta[i] + d[i];
         if (diff < 0)
-            return true;
+            return false;
         s += diff;
     }
-    return s > 10; 
+    assert(s >= 0);
+    return s <= 10; 
 }
 
-bool Delta::operator>(const Delta& o) const {
-    return o < *this;
+eval_t Delta::eval() const {
+    eval_t value = 0;
+    for (int i = 0; i < 4; ++i)
+        value += delta[i] * (i + 2);
+    return value;
 }
 
 Delta Delta::decode(int id) {
     Delta res;
-    for (int i = 3; i >= 0; --i) {
+    for (int i = 0; i < 4; ++i) {
         res[i] = id % LIMIT;
         id /= LIMIT;
     }
@@ -168,12 +173,12 @@ struct Order : public Action {
     Order(const int& id, const Delta& delta, const int& price);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Order& order);
+    friend std::ostream& operator<<(std::ostream& out, const Order& o);
 };
 
 struct Spell : public Action {
     int maxTimes = 1;
-    int times = 1;
+    int curTimes = 1;
     bool castable;
     bool repeatable;
 
@@ -181,7 +186,7 @@ struct Spell : public Action {
         const bool& castable, const bool& repeatable);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Spell& spell);
+    friend std::ostream& operator<<(std::ostream& out, const Spell& s);
 };
 
 struct Recipe : public Action {
@@ -193,7 +198,9 @@ struct Recipe : public Action {
         const int &tomeIndex, const int& taxCount, const bool& repeatable);
     void print() const override;
 
-    friend std::ostream& operator<<(std::ostream& out, const Recipe& recipe);
+    eval_t eval() const;
+
+    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
 };
 
 struct Rest : public Action {
@@ -205,7 +212,10 @@ struct Witch {
     Delta inv;
     int score;
 
-    friend std::istream& operator>>(std::istream& in, Witch& witch);
+    eval_t eval() const;
+
+    friend std::istream& operator>>(std::istream& in, Witch& w);
+    friend std::ostream& operator<<(std::ostream& out, const Witch& w);
 };
 
 
@@ -225,41 +235,41 @@ void Order::print() const {
     std::cout << "BREW " << id << std::endl;
 }
 
-std::ostream& operator<<(std::ostream& out, const Order& order) {
-    return out << "ORDER: id=" << order.id 
-        << ", delta=" << order.delta << ", "
-        << "price=" << order.price;
+std::ostream& operator<<(std::ostream& out, const Order& o) {
+    return out << "ORDER: id=" << o.id 
+        << ", delta=" << o.delta << ", "
+        << "price=" << o.price;
 }
 
 Spell::Spell(const int& id, const Delta& delta,
     const bool& castable, const bool& repeatable) :
     Action(id, delta), castable(castable), repeatable(repeatable) {
     if (repeatable) {
-        int times = 10;
-        int s = 0;
-
-        for (int i = 0; i < 4; ++i) {
-            times = std::min(times, 10 / std::max(1, std::abs(delta[i])));
-            s += delta[i];
-        }
-        times = std::min(times, 10 / std::max(1, std::abs(s)));
-
-        maxTimes = times;        
+        int provide = 0, supply = 0;
+        for (int i = 0; i < 4; ++i)
+            if (delta[i] < 0)
+                provide -= delta[i];
+            else
+                supply += delta[i];
+        assert(provide >= 0 && supply >= 0);
+        maxTimes = 10;
+        if (provide > 0)
+            maxTimes = std::min(maxTimes, 10 / provide);
+        if (supply > 0)
+            maxTimes = std::min(maxTimes, 10 / supply);
     }
 }
 
 void Spell::print() const {
-    std::cout << "CAST " << id;
-    assert(times >= 1);
-    if (times > 1)
-        std::cout << " " << times;
-    std::cout << std::endl;
+    assert(curTimes >= 1);
+    std::cout << "CAST " << id << " " << curTimes << std::endl;
 }
 
-std::ostream& operator<<(std::ostream& out, const Spell& spell) {
-    return out << "SPELL: id=" << spell.id 
-        << ", delta={" << spell.delta << ", "
-        << "castable=" << spell.castable;
+std::ostream& operator<<(std::ostream& out, const Spell& s) {
+    return out << "SPELL: id=" << s.id 
+        << ", delta=" << s.delta << ", "
+        << "castable=" << s.castable << ", "
+        << "maxTimes=" << s.maxTimes;
 }
 
 Recipe::Recipe(const int& id, const Delta& delta,
@@ -272,12 +282,16 @@ void Recipe::print() const {
     std::cout << "LEARN " << id << std::endl;
 }
 
-std::ostream& operator<<(std::ostream& out, const Recipe& recipe) {
-    return out << "RECIPE: id=" << recipe.id 
-        << ", delta={" << recipe.delta << ", "
-        << "tomeIndex=" << recipe.tomeIndex << ", "
-        << "taxCount=" << recipe.taxCount << ", "
-        << "repeatable=" << recipe.repeatable;
+eval_t Recipe::eval() const {
+    return delta.eval() + repeatable * 5;
+}
+
+std::ostream& operator<<(std::ostream& out, const Recipe& r) {
+    return out << "RECIPE: id=" << r.id 
+        << ", delta={" << r.delta << ", "
+        << "tomeIndex=" << r.tomeIndex << ", "
+        << "taxCount=" << r.taxCount << ", "
+        << "repeatable=" << r.repeatable;
 }
 
 Rest::Rest() {
@@ -288,16 +302,54 @@ void Rest::print() const {
     std::cout << "REST" << std::endl;
 }
 
-std::istream& operator>>(std::istream& in, Witch& witch) {
-    return in >> witch.inv >> witch.score;
+eval_t Witch::eval() const {
+    eval_t value = score * 3;
+    value += inv.eval();
+    return value;
+}
+
+std::istream& operator>>(std::istream& in, Witch& w) {
+    return in >> w.inv >> w.score;
+}
+
+std::ostream& operator<<(std::ostream& out, const Witch& w) {
+    return out << "delta=" << w.inv << ", " << "score=" << w.score;
 }
 
 
 #include <vector>
 
+struct State {
+    Witch player;
+
+    std::vector<Spell> spells;
+    std::vector<Order> orders;
+    std::vector<Recipe> recipes;
+
+    const Action* firstAction = nullptr;
+    int ordersDone = 0;
+
+    std::vector<State> getNeighbors() const;
+    eval_t eval() const;
+
+    bool operator<(const State& s) const;
+    friend std::ostream& operator<<(std::ostream& out, const State& s);
+};
+
 class Battle {
 public:
     static void start();
+
+public:
+    static std::vector<Spell> spells;
+    static std::vector<Order> orders;
+    static std::vector<Recipe> recipes;
+    static Rest rest;
+
+    static std::vector<Spell> tSpells;
+
+    static int playerOrdersDone;
+    static int enemyOrdersDone;
 
 private:
     static void readData();
@@ -305,33 +357,19 @@ private:
     static void writeData();
     #endif
     static const Action* pickAction();
-    static const Action* getDoableOrder();
+    static const Action* chooseRecipe();
     static const Action* search();
-    static float eval(const Delta& v, int dist);
+    static State getInitialState();
 
 private:
     static Witch player;
     static Witch opponent;
 
-    static std::vector<Spell> spells;
-    static std::vector<Order> orders;
-    static std::vector<Recipe> recipes;
-
-    static Rest rest;
-
-    static int distance[];
-    static int from[];
-    static int fromidx[];
-    static int fromtimes[];
-
-    struct Info {
-        int id;
-        int dist;
-    };
-    static std::vector<Info> orderCost;
-
     static int roundNumber;
-    static int enemyOrdersDone;
+
+    static constexpr int beamDepth = 5;
+    static constexpr int beamWidth = 5;
+    static constexpr int recipeConsider = 2;
 };
 
 
@@ -340,6 +378,81 @@ private:
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <math.h>
+
+bool State::operator<(const State& s) const {
+    return eval() < s.eval();
+}
+
+eval_t State::eval() const {
+    eval_t value = player.eval();
+    value += 5 * ordersDone * ordersDone;
+    return value;
+}
+
+std::ostream& operator<<(std::ostream& out, const State& s) {
+    out << s.player << "\n";
+    out << "ordersDone: " << s.ordersDone << "\n";
+    out << "Spells:\n";
+    for (const auto& spell : s.spells)
+        out << "\t" << spell << "\n";
+    out << "Orders:\n";
+    for (const auto& order : s.orders)
+        out << "\t" << order << "\n";
+    out << "Recipes:\n";
+    for (const auto& recipe : s.recipes)
+        out << "\t" << recipe << "\n";
+    return out;
+}
+
+std::vector<State> State::getNeighbors() const {
+    std::vector<State> neighbors;
+
+    for (int i = 0; i < int(orders.size()); ++i) {
+        const auto& order = orders[i];
+        if (player.inv.canApply(order.delta)) {
+            State neighbor = *this;
+            neighbor.player.inv += order.delta;
+            neighbor.player.score += order.price;
+            neighbor.ordersDone++;
+            if (firstAction == nullptr)
+                neighbor.firstAction = &Battle::orders[i];
+            neighbors.push_back(neighbor);
+        }
+    }
+
+    for (int i = 0; i < int(spells.size()); ++i) {
+        const auto& s = spells[i];
+        if (s.castable) {
+            auto spell = s;
+            for (int times = 0; times < s.maxTimes; ++times) {
+                if (player.inv.canApply(spell.delta)) {
+                    State neighbor = *this;
+                    neighbor.player.inv += spell.delta;
+                    neighbor.spells[i].castable = false;
+                    if (firstAction == nullptr) {
+                        Battle::tSpells.push_back(Battle::spells[i]);
+                        Battle::tSpells.back().curTimes = times + 1;
+                        neighbor.firstAction = &Battle::tSpells.back();
+                    }
+                    neighbors.push_back(neighbor);
+                }
+                else
+                    break;
+                spell.delta += s.delta;
+            } 
+        }
+    }
+
+    auto neighbor = *this;
+    for (auto& spell : neighbor.spells)
+        spell.castable = true;
+    if (firstAction == nullptr)
+        neighbor.firstAction = &Battle::rest;
+    neighbors.push_back(neighbor);
+
+    return neighbors;
+}
 
 Witch Battle::player;
 Witch Battle::opponent;
@@ -350,31 +463,29 @@ std::vector<Recipe> Battle::recipes;
 
 Rest Battle::rest;
 
-int Battle::distance[Delta::MAX_DELTA];
-int Battle::from[Delta::MAX_DELTA];
-int Battle::fromidx[Delta::MAX_DELTA];
-int Battle::fromtimes[Delta::MAX_DELTA];
-
-std::vector<Battle::Info> Battle::orderCost;
+std::vector<Spell> Battle::tSpells;
 
 int Battle::roundNumber = 0;
 int Battle::enemyOrdersDone = 0;
+int Battle::playerOrdersDone = 0;
 
 void Battle::start() {
     orders.reserve(100);
     spells.reserve(100);
     recipes.reserve(100);
+    tSpells.reserve(100);
 
     while (true) {
         readData();
         #ifdef DEBUG
-        writeData();
+        // writeData();
         #endif
         pickAction()->print();
 
         orders.clear();
         spells.clear();
         recipes.clear();
+        tSpells.clear();
         
         ++roundNumber;
     }
@@ -410,14 +521,20 @@ void Battle::readData() {
     std::cin >> player;
     std::cin >> opponent;
 
+    static int lastPlayerScore = 0;
+    if (player.score != lastPlayerScore) {
+        lastPlayerScore = player.score;
+        ++playerOrdersDone;
+    }
+
     static int lastEnemyScore = 0;
     if (opponent.score != lastEnemyScore) {
         lastEnemyScore = opponent.score;
-        ++enemyOrdersDone;
-        debug(enemyOrdersDone);
+        ++Options::enemyOrdersDone;
     }
 }
 
+#ifdef DEBUG
 void Battle::writeData() {
     for (const auto& order : orders)
         debug(order);
@@ -426,151 +543,62 @@ void Battle::writeData() {
     for (const auto& recipe : recipes)
         debug(recipe);    
 }
+#endif
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 7)
-        return &recipes.front();
-
-    auto orderAction = getDoableOrder();
-    if (orderAction)
-        return orderAction;
-
-    auto serchAction = search();
-    if (serchAction)
-        return serchAction;
-
-    return &rest;
+    if (roundNumber < 10)
+        return chooseRecipe();
+    return search();
 }
 
-const Action* Battle::getDoableOrder() {
-    const Action* bestAction = nullptr;
-    int bestPrice = -1;
-
-    for (const auto& action : orders)
-        if (!(player.inv < action.delta) && bestPrice < action.price) {
-            bestPrice = action.price;
-            bestAction = &action;
-        }
-
-    return bestAction;
+const Action* Battle::chooseRecipe() {
+    return &recipes.front();
 }
 
 const Action* Battle::search() {
-    // initialization
-    std::fill(distance, distance + Delta::MAX_DELTA, -1);
-    orderCost.assign(orders.size(), {-1, INF});
+    State initialState = getInitialState();
+    std::priority_queue<State> q, layer;
+    q.push(initialState);
 
-    distance[player.inv.id()] = 0;
-    std::queue<Delta> q;
-    q.push(player.inv);
+    for (int depth = 0; depth < beamDepth; ++depth) {
+        assert(!q.empty());
 
-    // useful variables
-    const int spellCount = int(spells.size());
+        for (int i = 0; i < beamWidth; ++i) {
+            const auto state = q.top();
+            q.pop();
 
-    // bfs
-    while (!q.empty()) {
-        auto v = q.front();
-        q.pop();
+            auto neighbors = state.getNeighbors();
+            for (const auto& neighbor : neighbors)
+                layer.push(neighbor);
 
-        int vid = v.id();
-        int dist = distance[vid];
-        eval(v, dist);
-
-        for (int i = 0; i < spellCount; ++i) {
-            const auto& spell = spells[i];
-            auto curSpell = spell;
-
-            for (int j = 0; j < spell.maxTimes; ++j) {
-                if (!(v < curSpell.delta)) {
-                    Delta s = v + curSpell.delta;
-                    int sid = s.id();
-
-                    if (distance[sid] == -1) {
-                        distance[sid] = dist + 1;
-                        from[sid] = vid;
-                        fromidx[sid] = i;
-                        fromtimes[sid] = j + 1;
-                        q.push(s);
-                    }
-                }
-                curSpell.delta += spell.delta;
+            if (i != beamWidth - 1 && q.empty()) {
+                debug("Exiting loop early - not enough states!");
+                break;
             }
         }
-    }   
 
-    assert(orderCost.size() == orders.size());
-    int i = 0;
-    std::vector<std::pair<float, int>> bestStates;
-    for (const auto& [id, dist] : orderCost) {
-        if (id != -1) {
-            assert(dist > 0);
-            debug(id, dist, distance[id], orders[i]);
-            if (enemyOrdersDone < 0)
-                bestStates.emplace_back(float(orders[i].price) / dist, id);
-            else
-                bestStates.emplace_back(100.f / dist + orders[i].price / 100.f, id);
-        }
-        ++i;
-    }
-    std::sort(bestStates.begin(), bestStates.end(), std::greater<std::pair<float, int>>());
-    bestStates.resize(2);
-
-    for (auto [value, id] : bestStates) {
-        int dist = distance[id];
-        debug(value, id, dist, Delta::decode(id));
-        assert(dist >= 1);
-        std::set<std::pair<int, int>> actionIdxs;
-
-        while (dist > 0) {
-            actionIdxs.insert({fromidx[id], fromtimes[id]});
-            id = from[id];
-            debug(Delta::decode(id));
-            dist = distance[id];
-        }
-
-        assert(!actionIdxs.empty());
-        for (const auto& [idx, times] : actionIdxs) {
-            auto& spell = spells[idx];
-            assert(times >= 1);
-            if (spell.castable) {
-                auto curSpell = spell;
-                int targetTimes = -1;
-
-                for (int i = 1; i <= times; ++i) {
-                    if (!(player.inv < curSpell.delta))
-                        targetTimes = i;
-                    curSpell.delta += spell.delta;
-                }
-
-                if (targetTimes != -1) {
-                    assert(targetTimes >= 1);
-                    spell.times = targetTimes;
-                    return &spell;
-                }
-            }
-        }
+        while (!q.empty())
+            q.pop();
+        q.swap(layer);
     }
 
-    return nullptr;
+    assert(!q.empty());
+    const auto& finalState = q.top();
+    debug(finalState);    
+    assert(finalState.firstAction != nullptr);
+
+    return finalState.firstAction;
 }
 
-float Battle::eval(const Delta& v, int dist) {
-    int maxPrice = 0;
-    int vid = v.id();
-
-    for (int i = 0; i < int(orders.size()); ++i) {
-        const auto& order = orders[i];
-        if (!(v < order.delta)) {
-            if (dist < orderCost[i].dist)
-                orderCost[i] = {vid, dist};
-            if (maxPrice < order.price)
-                maxPrice = order.price;
-        }            
-    }
-
-    if (enemyOrdersDone < 4)
-        return dist == 0 ? 0 : float(maxPrice);
-    return dist == 0 ? 0 : 1.f / dist;
+State Battle::getInitialState() {
+    State initialState;
+    initialState.player = player;
+    initialState.player.score = 0;
+    initialState.ordersDone = playerOrdersDone;
+    initialState.spells = spells;
+    initialState.orders = orders;
+    initialState.recipes = recipes;
+    return initialState;
 }
 
 int main() {

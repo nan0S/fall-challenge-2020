@@ -1,11 +1,86 @@
 #include "Battle.hpp"
-#include "Common.hpp"
+#include "Options.hpp"
 
 #include <queue>
 #include <cassert>
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <math.h>
+
+bool State::operator<(const State& s) const {
+    return eval() < s.eval();
+}
+
+eval_t State::eval() const {
+    eval_t value = player.eval();
+    value += 5 * ordersDone * ordersDone;
+    return value;
+}
+
+std::ostream& operator<<(std::ostream& out, const State& s) {
+    out << s.player << "\n";
+    out << "ordersDone: " << s.ordersDone << "\n";
+    out << "Spells:\n";
+    for (const auto& spell : s.spells)
+        out << "\t" << spell << "\n";
+    out << "Orders:\n";
+    for (const auto& order : s.orders)
+        out << "\t" << order << "\n";
+    out << "Recipes:\n";
+    for (const auto& recipe : s.recipes)
+        out << "\t" << recipe << "\n";
+    return out;
+}
+
+std::vector<State> State::getNeighbors() const {
+    std::vector<State> neighbors;
+
+    for (int i = 0; i < int(orders.size()); ++i) {
+        const auto& order = orders[i];
+        if (player.inv.canApply(order.delta)) {
+            State neighbor = *this;
+            neighbor.player.inv += order.delta;
+            neighbor.player.score += order.price;
+            neighbor.ordersDone++;
+            if (firstAction == nullptr)
+                neighbor.firstAction = &Battle::orders[i];
+            neighbors.push_back(neighbor);
+        }
+    }
+
+    for (int i = 0; i < int(spells.size()); ++i) {
+        const auto& s = spells[i];
+        if (s.castable) {
+            auto spell = s;
+            for (int times = 0; times < s.maxTimes; ++times) {
+                if (player.inv.canApply(spell.delta)) {
+                    State neighbor = *this;
+                    neighbor.player.inv += spell.delta;
+                    neighbor.spells[i].castable = false;
+                    if (firstAction == nullptr) {
+                        Battle::tSpells.push_back(Battle::spells[i]);
+                        Battle::tSpells.back().curTimes = times + 1;
+                        neighbor.firstAction = &Battle::tSpells.back();
+                    }
+                    neighbors.push_back(neighbor);
+                }
+                else
+                    break;
+                spell.delta += s.delta;
+            } 
+        }
+    }
+
+    auto neighbor = *this;
+    for (auto& spell : neighbor.spells)
+        spell.castable = true;
+    if (firstAction == nullptr)
+        neighbor.firstAction = &Battle::rest;
+    neighbors.push_back(neighbor);
+
+    return neighbors;
+}
 
 Witch Battle::player;
 Witch Battle::opponent;
@@ -16,31 +91,29 @@ std::vector<Recipe> Battle::recipes;
 
 Rest Battle::rest;
 
-int Battle::distance[Delta::MAX_DELTA];
-int Battle::from[Delta::MAX_DELTA];
-int Battle::fromidx[Delta::MAX_DELTA];
-int Battle::fromtimes[Delta::MAX_DELTA];
-
-std::vector<Battle::Info> Battle::orderCost;
+std::vector<Spell> Battle::tSpells;
 
 int Battle::roundNumber = 0;
 int Battle::enemyOrdersDone = 0;
+int Battle::playerOrdersDone = 0;
 
 void Battle::start() {
     orders.reserve(100);
     spells.reserve(100);
     recipes.reserve(100);
+    tSpells.reserve(100);
 
     while (true) {
         readData();
         #ifdef DEBUG
-        writeData();
+        // writeData();
         #endif
         pickAction()->print();
 
         orders.clear();
         spells.clear();
         recipes.clear();
+        tSpells.clear();
         
         ++roundNumber;
     }
@@ -76,10 +149,16 @@ void Battle::readData() {
     std::cin >> player;
     std::cin >> opponent;
 
+    static int lastPlayerScore = 0;
+    if (player.score != lastPlayerScore) {
+        lastPlayerScore = player.score;
+        ++playerOrdersDone;
+    }
+
     static int lastEnemyScore = 0;
     if (opponent.score != lastEnemyScore) {
         lastEnemyScore = opponent.score;
-        ++enemyOrdersDone;
+        ++Options::enemyOrdersDone;
     }
 }
 
@@ -95,147 +174,57 @@ void Battle::writeData() {
 #endif
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 7)
-        return &recipes.front();
-
-    auto orderAction = getDoableOrder();
-    if (orderAction)
-        return orderAction;
-
-    auto serchAction = search();
-    if (serchAction)
-        return serchAction;
-
-    return &rest;
+    if (roundNumber < 10)
+        return chooseRecipe();
+    return search();
 }
 
-const Action* Battle::getDoableOrder() {
-    const Action* bestAction = nullptr;
-    int bestPrice = -1;
-
-    for (const auto& action : orders)
-        if (!(player.inv < action.delta) && bestPrice < action.price) {
-            bestPrice = action.price;
-            bestAction = &action;
-        }
-
-    return bestAction;
+const Action* Battle::chooseRecipe() {
+    return &recipes.front();
 }
 
 const Action* Battle::search() {
-    // initialization
-    std::fill(distance, distance + Delta::MAX_DELTA, -1);
-    orderCost.assign(orders.size(), {-1, INF});
+    State initialState = getInitialState();
+    std::priority_queue<State> q, layer;
+    q.push(initialState);
 
-    distance[player.inv.id()] = 0;
-    std::queue<Delta> q;
-    q.push(player.inv);
+    for (int depth = 0; depth < beamDepth; ++depth) {
+        assert(!q.empty());
 
-    // useful variables
-    const int spellCount = int(spells.size());
+        for (int i = 0; i < beamWidth; ++i) {
+            const auto state = q.top();
+            q.pop();
 
-    // bfs
-    while (!q.empty()) {
-        auto v = q.front();
-        q.pop();
+            auto neighbors = state.getNeighbors();
+            for (const auto& neighbor : neighbors)
+                layer.push(neighbor);
 
-        int vid = v.id();
-        int dist = distance[vid];
-        eval(v, dist);
-
-        for (int i = 0; i < spellCount; ++i) {
-            const auto& spell = spells[i];
-            auto curSpell = spell;
-
-            for (int j = 0; j < spell.maxTimes; ++j) {
-                if (!(v < curSpell.delta)) {
-                    Delta s = v + curSpell.delta;
-                    int sid = s.id();
-
-                    if (distance[sid] == -1) {
-                        distance[sid] = dist + 1;
-                        from[sid] = vid;
-                        fromidx[sid] = i;
-                        fromtimes[sid] = j + 1;
-                        q.push(s);
-                    }
-                }
-                curSpell.delta += spell.delta;
+            if (i != beamWidth - 1 && q.empty()) {
+                debug("Exiting loop early - not enough states!");
+                break;
             }
         }
-    }   
 
-    assert(orderCost.size() == orders.size());
-    int i = 0;
-    std::vector<std::pair<float, int>> bestStates;
-    for (const auto& [id, dist] : orderCost) {
-        if (id != -1) {
-            assert(dist > 0);
-            debug(id, dist, distance[id], orders[i]);
-            if (enemyOrdersDone < 0)
-                bestStates.emplace_back(float(orders[i].price) / dist, id);
-            else
-                bestStates.emplace_back(100.f / dist + orders[i].price / 100.f, id);
-        }
-        ++i;
-    }
-    std::sort(bestStates.begin(), bestStates.end(), std::greater<std::pair<float, int>>());
-    bestStates.resize(2);
-
-    for (auto [value, id] : bestStates) {
-        int dist = distance[id];
-        debug(value, id, dist, Delta::decode(id));
-        assert(dist >= 1);
-        std::set<std::pair<int, int>> actionIdxs;
-
-        while (dist > 0) {
-            actionIdxs.insert({fromidx[id], fromtimes[id]});
-            id = from[id];
-            debug(Delta::decode(id));
-            dist = distance[id];
-        }
-
-        assert(!actionIdxs.empty());
-        for (const auto& [idx, times] : actionIdxs) {
-            auto& spell = spells[idx];
-            assert(times >= 1);
-            if (spell.castable) {
-                auto curSpell = spell;
-                int targetTimes = -1;
-
-                for (int i = 1; i <= times; ++i) {
-                    if (!(player.inv < curSpell.delta))
-                        targetTimes = i;
-                    curSpell.delta += spell.delta;
-                }
-
-                if (targetTimes != -1) {
-                    assert(targetTimes >= 1);
-                    spell.times = targetTimes;
-                    return &spell;
-                }
-            }
-        }
+        while (!q.empty())
+            q.pop();
+        q.swap(layer);
     }
 
-    return nullptr;
+    assert(!q.empty());
+    const auto& finalState = q.top();
+    debug(finalState);    
+    assert(finalState.firstAction != nullptr);
+
+    return finalState.firstAction;
 }
 
-float Battle::eval(const Delta& v, int dist) {
-    int maxPrice = 0;
-    int vid = v.id();
-
-    for (int i = 0; i < int(orders.size()); ++i) {
-        const auto& order = orders[i];
-        if (!(v < order.delta)) {
-            if (dist < orderCost[i].dist)
-                orderCost[i] = {vid, dist};
-            if (maxPrice < order.price)
-                maxPrice = order.price;
-        }            
-    }
-
-    if (enemyOrdersDone < 4)
-        return dist == 0 ? 0 : float(maxPrice);
-    return dist == 0 ? 0 : 1.f / dist;
+State Battle::getInitialState() {
+    State initialState;
+    initialState.player = player;
+    initialState.player.score = 0;
+    initialState.ordersDone = playerOrdersDone;
+    initialState.spells = spells;
+    initialState.orders = orders;
+    initialState.recipes = recipes;
+    return initialState;
 }
