@@ -1,5 +1,6 @@
 #include "Battle.hpp"
 #include "Options.hpp"
+#include "Common.hpp"
 
 #include <queue>
 #include <cassert>
@@ -188,7 +189,10 @@ const Action* Battle::search() {
     std::priority_queue<State> q, layer;
     q.push(initialState);
 
-    for (int depth = 0; depth < beamDepth; ++depth) {
+    float timeLimit = roundNumber == 0 ? 1000 : 50;
+    int depth = 0;
+
+    for (Timer timer(timeLimit); timer.isTimeLeft(); ++depth) {       
         assert(!q.empty());
 
         for (int i = 0; i < beamWidth; ++i) {
@@ -212,8 +216,9 @@ const Action* Battle::search() {
 
     assert(!q.empty());
     const auto& finalState = q.top();
-    debug(finalState);    
+    debug(finalState);
     assert(finalState.firstAction != nullptr);
+    debug("Beam search depth:", depth);
 
     return finalState.firstAction;
 }

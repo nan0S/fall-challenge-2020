@@ -2,6 +2,7 @@
 
 
 #include <iostream>
+#include <chrono>
 
 using eval_t = float;
 
@@ -59,6 +60,26 @@ void _debug(const char* s, const Args&... rest) {
 #define debug(...) 13
 #endif
 
+class Timer {
+public:
+    Timer(float timeLimit);
+    bool isTimeLeft() const;
+
+private:
+    float timeLimit;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+};
+
+
+Timer::Timer(float timeLimit) :
+	timeLimit(timeLimit), startTime(std::chrono::high_resolution_clock::now()) {
+
+}
+
+bool Timer::isTimeLeft() const {
+	auto now = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration<float>(now - startTime).count() * 1000 < timeLimit;
+}
 
 namespace Options {
 	extern int enemyOrdersDone;
@@ -560,7 +581,10 @@ const Action* Battle::search() {
     std::priority_queue<State> q, layer;
     q.push(initialState);
 
-    for (int depth = 0; depth < beamDepth; ++depth) {
+    float timeLimit = roundNumber == 0 ? 1000 : 50;
+    int depth = 0;
+
+    for (Timer timer(timeLimit); timer.isTimeLeft(); ++depth) {       
         assert(!q.empty());
 
         for (int i = 0; i < beamWidth; ++i) {
@@ -584,8 +608,9 @@ const Action* Battle::search() {
 
     assert(!q.empty());
     const auto& finalState = q.top();
-    debug(finalState);    
+    debug(finalState);
     assert(finalState.firstAction != nullptr);
+    debug("Beam search depth:", depth);
 
     return finalState.firstAction;
 }

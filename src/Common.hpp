@@ -3,6 +3,7 @@
 #define COMMON_HPP
 
 #include <iostream>
+#include <chrono>
 
 using eval_t = float;
 
@@ -59,5 +60,15 @@ void _debug(const char* s, const Args&... rest) {
 #else
 #define debug(...) 13
 #endif
+
+class Timer {
+public:
+    Timer(float timeLimit);
+    bool isTimeLeft() const;
+
+private:
+    float timeLimit;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+};
 
 #endif /* COMMON_HPP */
