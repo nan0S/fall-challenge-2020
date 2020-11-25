@@ -27,6 +27,7 @@ std::ostream& operator<<(std::ostream& out, const Order& o) {
 Spell::Spell(const int& id, const Delta& delta,
     const bool& castable, const bool& repeatable) :
     Action(id, delta), castable(castable), repeatable(repeatable) {
+
     if (repeatable) {
         int provide = 0, supply = 0;
         for (int i = 0; i < 4; ++i)
@@ -34,7 +35,9 @@ Spell::Spell(const int& id, const Delta& delta,
                 provide -= delta[i];
             else
                 supply += delta[i];
+
         assert(provide >= 0 && supply >= 0);
+        
         maxTimes = 10;
         if (provide > 0)
             maxTimes = std::min(maxTimes, 10 / provide);
@@ -42,11 +45,11 @@ Spell::Spell(const int& id, const Delta& delta,
             maxTimes = std::min(maxTimes, 10 / supply);
     }
 
-    auto repeatedDelta = delta;
-    for (int i = 0; i < maxTimes; ++i) {
-        repeatedDeltas[i] = repeatedDelta;
-        repeatedDelta += delta;
-    }
+    assert(maxTimes <= MAX_REPEATED_DELTA);
+
+    repeatedDeltas[0] = delta;
+    for (int i = 1; i < maxTimes; ++i)
+        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
 }
 
 void Spell::print() const {
@@ -77,10 +80,6 @@ std::ostream& operator<<(std::ostream& out, const Recipe& r) {
         << "tomeIndex=" << r.tomeIndex << ", "
         << "taxCount=" << r.taxCount << ", "
         << "repeatable=" << r.repeatable;
-}
-
-Rest::Rest() {
-
 }
 
 void Rest::print() const {

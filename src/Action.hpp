@@ -19,6 +19,7 @@ struct Action {
 struct Order : public Action {
     int price;
 
+    Order() = default;
     Order(const int& id, const Delta& delta, const int& price);
     void print() const override;
 
@@ -26,12 +27,15 @@ struct Order : public Action {
 };
 
 struct Spell : public Action {
-    std::array<Delta, 10> repeatedDeltas;
-    int maxTimes = 1;
-    int curTimes = 1;
     bool castable;
     bool repeatable;
+    int maxTimes = 1;
+    int curTimes = 1;
 
+    static constexpr int MAX_REPEATED_DELTA = 10;
+    std::array<Delta, MAX_REPEATED_DELTA> repeatedDeltas;
+
+    Spell() = default;
     Spell(const int& id, const Delta& delta,
         const bool& castable, const bool& repeatable);
     void print() const override;
@@ -44,6 +48,7 @@ struct Recipe : public Action {
     int taxCount;
     bool repeatable;
 
+    Recipe() = default;
     Recipe(const int& id, const Delta& delta,
         const int &tomeIndex, const int& taxCount, const bool& repeatable);
     void print() const override;
@@ -52,13 +57,13 @@ struct Recipe : public Action {
 };
 
 struct Rest : public Action {
-	Rest();
+	Rest() = default;
     void print() const override;
 };
 
 struct Witch {
     Delta inv;
-    float score;
+    int score;
 
     inline eval_t eval() const;
 

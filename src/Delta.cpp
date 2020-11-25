@@ -33,7 +33,6 @@ std::istream& operator>>(std::istream& in, Delta& d) {
               >> d.delta[2] >> d.delta[3];
 }
 
-
 std::ostream& operator<<(std::ostream& out, const Delta& o) {
     return out << "{" << o.delta[0] << "," << o.delta[1] << ","
                << o.delta[2] << "," << o.delta[3] << "}";

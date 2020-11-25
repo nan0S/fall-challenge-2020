@@ -5,7 +5,6 @@
 #include "Action.hpp"
 #include "Common.hpp"
 
-#include <vector>
 #include <array>
 
 struct State;
@@ -14,17 +13,8 @@ class Battle {
 public:
     static void start();
 
-public:
-    static std::vector<Spell> spells;
-    static std::vector<Order> orders;
-    static std::vector<Recipe> recipes;
-    static std::vector<Spell> tSpells;
-    static Rest rest;
-
-    static int playerOrdersDone;
-    static int enemyOrdersDone;
-
 private:
+    static void resetData();
     static void readData();
     #ifdef DEBUG
     static void writeData();
@@ -34,53 +24,58 @@ private:
     static const Action* search();
     static State getInitialState();
 
-private:
+public:
+    static int spellCount;
+    static int orderCount;
+    static int recipeCount;
+    static int customSpellCount;
+
+    static constexpr int MAX_SPELL_COUNT = 20;
+    static constexpr int MAX_ORDER_COUNT = 5;
+    static constexpr int MAX_RECIPE_COUNT = 6;
+
+    static std::array<Spell, MAX_SPELL_COUNT> spells;
+    static std::array<Order, MAX_ORDER_COUNT> orders;
+    static std::array<Recipe, MAX_RECIPE_COUNT> recipes;
+    static std::array<Spell, MAX_SPELL_COUNT> customSpells;
+    static Rest rest;
+
+    static int playerOrdersDone;
+    static int enemyOrdersDone;
+
     static Witch player;
     static Witch opponent;
 
     static int roundNumber;
-    static constexpr int beamWidth = 600;
+    static constexpr int BEAM_WIDTH = 600;
 };
 
 struct State {
-    const Action* firstAction = nullptr;
     Witch player;
-    int castableSpellsMask = 0;
-    int ordersUndoneMask = 0;
-    float gamma = 1.f;
+    int castableSpellsMask;
+    int ordersTodoMask;
+    int recipesTodoMask;
+    float gamma;
+    eval_t evaluation;
 
-    std::vector<Delta> history;
+    const Action* firstAction;
 
     static constexpr int MAX_NEIGHBORS = 30;
     static constexpr float DECAY = 0.95f;
 
-    int getNeighbors(std::array<State, MAX_NEIGHBORS>& neighbors) const;
-    inline eval_t eval() const;
-    inline int getOrdersDone() const;
-    inline bool isCastable(const int& i) const;
-    inline bool isOrderDone(const int& i) const;
+    int getNeighbors(State* neighbors) const;
+    void getSpellActions(State* neighbors, int& neighborCount) const;
+    void getOrderActions(State* neighbors, int& neighborCount) const;
+    void getRecipeActions(State* neighbors, int& neighborCount) const;
+    void getRestAction(State* neighbors, int& neighborCount) const;
+
+    friend std::ostream& operator<<(std::ostream& out, const State& s);
+    bool isCastable(const int& i) const;
+    bool isOrderDoable(const int& i) const;
+    bool isRecipeDoable(const int& i) const;
 
     bool operator<(const State& s) const;
-    friend std::ostream& operator<<(std::ostream& out, const State& s);
+    bool operator>(const State& s) const;
 };
-
-eval_t State::eval() const {
-    eval_t value = player.eval();
-    // int ordersDone = getOrdersDone() * 3 + 10;
-    // value += 5 * ordersDone * ordersDone;
-    return value;
-}
-
-int State::getOrdersDone() const {
-    return Battle::orders.size() - __builtin_popcount(ordersUndoneMask);
-}
-
-bool State::isCastable(const int& i) const {
-    return castableSpellsMask & 1 << i;
-}
-
-bool State::isOrderDone(const int& i) const {
-    return !(ordersUndoneMask & 1 << i);
-}
 
 #endif /* BATTLE_HPP */

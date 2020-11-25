@@ -84,13 +84,6 @@ bool Timer::isTimeLeft() const {
 	return std::chrono::duration<float>(now - startTime).count() * 1000 < timeLimit;
 }
 
-namespace Options {
-	extern int enemyOrdersDone;
-}
-
-
-int Options::enemyOrdersDone = 0;
-
 
 #include <iostream>
 
@@ -152,7 +145,6 @@ std::istream& operator>>(std::istream& in, Delta& d) {
               >> d.delta[2] >> d.delta[3];
 }
 
-
 std::ostream& operator<<(std::ostream& out, const Delta& o) {
     return out << "{" << o.delta[0] << "," << o.delta[1] << ","
                << o.delta[2] << "," << o.delta[3] << "}";
@@ -182,6 +174,7 @@ struct Action {
 struct Order : public Action {
     int price;
 
+    Order() = default;
     Order(const int& id, const Delta& delta, const int& price);
     void print() const override;
 
@@ -189,12 +182,15 @@ struct Order : public Action {
 };
 
 struct Spell : public Action {
-    std::array<Delta, 10> repeatedDeltas;
-    int maxTimes = 1;
-    int curTimes = 1;
     bool castable;
     bool repeatable;
+    int maxTimes = 1;
+    int curTimes = 1;
 
+    static constexpr int MAX_REPEATED_DELTA = 10;
+    std::array<Delta, MAX_REPEATED_DELTA> repeatedDeltas;
+
+    Spell() = default;
     Spell(const int& id, const Delta& delta,
         const bool& castable, const bool& repeatable);
     void print() const override;
@@ -207,6 +203,7 @@ struct Recipe : public Action {
     int taxCount;
     bool repeatable;
 
+    Recipe() = default;
     Recipe(const int& id, const Delta& delta,
         const int &tomeIndex, const int& taxCount, const bool& repeatable);
     void print() const override;
@@ -215,13 +212,13 @@ struct Recipe : public Action {
 };
 
 struct Rest : public Action {
-	Rest();
+	Rest() = default;
     void print() const override;
 };
 
 struct Witch {
     Delta inv;
-    float score;
+    int score;
 
     inline eval_t eval() const;
 
@@ -261,6 +258,7 @@ std::ostream& operator<<(std::ostream& out, const Order& o) {
 Spell::Spell(const int& id, const Delta& delta,
     const bool& castable, const bool& repeatable) :
     Action(id, delta), castable(castable), repeatable(repeatable) {
+
     if (repeatable) {
         int provide = 0, supply = 0;
         for (int i = 0; i < 4; ++i)
@@ -268,7 +266,9 @@ Spell::Spell(const int& id, const Delta& delta,
                 provide -= delta[i];
             else
                 supply += delta[i];
+
         assert(provide >= 0 && supply >= 0);
+        
         maxTimes = 10;
         if (provide > 0)
             maxTimes = std::min(maxTimes, 10 / provide);
@@ -276,11 +276,11 @@ Spell::Spell(const int& id, const Delta& delta,
             maxTimes = std::min(maxTimes, 10 / supply);
     }
 
-    auto repeatedDelta = delta;
-    for (int i = 0; i < maxTimes; ++i) {
-        repeatedDeltas[i] = repeatedDelta;
-        repeatedDelta += delta;
-    }
+    assert(maxTimes <= MAX_REPEATED_DELTA);
+
+    repeatedDeltas[0] = delta;
+    for (int i = 1; i < maxTimes; ++i)
+        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
 }
 
 void Spell::print() const {
@@ -313,10 +313,6 @@ std::ostream& operator<<(std::ostream& out, const Recipe& r) {
         << "repeatable=" << r.repeatable;
 }
 
-Rest::Rest() {
-
-}
-
 void Rest::print() const {
     std::cout << "REST" << std::endl;
 }
@@ -330,7 +326,6 @@ std::ostream& operator<<(std::ostream& out, const Witch& w) {
 }
 
 
-#include <vector>
 #include <array>
 
 struct State;
@@ -339,17 +334,8 @@ class Battle {
 public:
     static void start();
 
-public:
-    static std::vector<Spell> spells;
-    static std::vector<Order> orders;
-    static std::vector<Recipe> recipes;
-    static std::vector<Spell> tSpells;
-    static Rest rest;
-
-    static int playerOrdersDone;
-    static int enemyOrdersDone;
-
 private:
+    static void resetData();
     static void readData();
     #ifdef DEBUG
     static void writeData();
@@ -359,207 +345,245 @@ private:
     static const Action* search();
     static State getInitialState();
 
-private:
+public:
+    static int spellCount;
+    static int orderCount;
+    static int recipeCount;
+    static int customSpellCount;
+
+    static constexpr int MAX_SPELL_COUNT = 20;
+    static constexpr int MAX_ORDER_COUNT = 5;
+    static constexpr int MAX_RECIPE_COUNT = 6;
+
+    static std::array<Spell, MAX_SPELL_COUNT> spells;
+    static std::array<Order, MAX_ORDER_COUNT> orders;
+    static std::array<Recipe, MAX_RECIPE_COUNT> recipes;
+    static std::array<Spell, MAX_SPELL_COUNT> customSpells;
+    static Rest rest;
+
+    static int playerOrdersDone;
+    static int enemyOrdersDone;
+
     static Witch player;
     static Witch opponent;
 
     static int roundNumber;
-    static constexpr int beamWidth = 600;
+    static constexpr int BEAM_WIDTH = 600;
 };
 
 struct State {
-    const Action* firstAction = nullptr;
     Witch player;
-    int castableSpellsMask = 0;
-    int ordersUndoneMask = 0;
-    float gamma = 1.f;
+    int castableSpellsMask;
+    int ordersTodoMask;
+    int recipesTodoMask;
+    float gamma;
+    eval_t evaluation;
 
-    std::vector<Delta> history;
+    const Action* firstAction;
 
     static constexpr int MAX_NEIGHBORS = 30;
     static constexpr float DECAY = 0.95f;
 
-    int getNeighbors(std::array<State, MAX_NEIGHBORS>& neighbors) const;
-    inline eval_t eval() const;
-    inline int getOrdersDone() const;
-    inline bool isCastable(const int& i) const;
-    inline bool isOrderDone(const int& i) const;
+    int getNeighbors(State* neighbors) const;
+    void getSpellActions(State* neighbors, int& neighborCount) const;
+    void getOrderActions(State* neighbors, int& neighborCount) const;
+    void getRecipeActions(State* neighbors, int& neighborCount) const;
+    void getRestAction(State* neighbors, int& neighborCount) const;
+
+    friend std::ostream& operator<<(std::ostream& out, const State& s);
+    bool isCastable(const int& i) const;
+    bool isOrderDoable(const int& i) const;
+    bool isRecipeDoable(const int& i) const;
 
     bool operator<(const State& s) const;
-    friend std::ostream& operator<<(std::ostream& out, const State& s);
+    bool operator>(const State& s) const;
 };
 
-eval_t State::eval() const {
-    eval_t value = player.eval();
-    // int ordersDone = getOrdersDone() * 3 + 10;
-    // value += 5 * ordersDone * ordersDone;
-    return value;
+
+#include <cassert>
+#include <algorithm>
+#include <cstring>
+
+bool State::operator<(const State& s) const {
+    return evaluation < s.evaluation;
 }
 
-int State::getOrdersDone() const {
-    return Battle::orders.size() - __builtin_popcount(ordersUndoneMask);
+bool State::operator>(const State& s) const {
+    return evaluation > s.evaluation;
+}
+
+std::ostream& operator<<(std::ostream& out, const State& s) {
+    out << s.player << s.gamma << "\n";
+
+    out << "SPELLS:\n";
+    for (int i = 0; i < Battle::spellCount; ++i) {
+        out << "\t" << (s.isCastable(i) ? "CASTABLE" : "NONCASTABLE") << " ";
+        out << Battle::spells[i] << "\n";
+    }
+
+    out << "ORDERS:\n";
+    for (int i = 0; i < Battle::orderCount; ++i) {
+        out << "\t" << (s.isOrderDoable(i) ? "DOABLE" : "DONE") << " ";
+        out << Battle::orders[i] << "\n";
+    }
+
+    out << "RECIPES:\n";
+    for (int i = 0; i < Battle::recipeCount; ++i) {
+        out << "\t" << (s.isRecipeDoable(i) ? "DOABLE" : "DONE") << " ";
+        out << Battle::recipes[i] << "\n";
+    }
+
+    return out;
 }
 
 bool State::isCastable(const int& i) const {
     return castableSpellsMask & 1 << i;
 }
 
-bool State::isOrderDone(const int& i) const {
-    return !(ordersUndoneMask & 1 << i);
+bool State::isOrderDoable(const int& i) const {
+    return ordersTodoMask & 1 << i;
 }
 
-
-#include <queue>
-#include <cassert>
-#include <set>
-#include <vector>
-#include <algorithm>
-#include <math.h>
-#include <array>
-#include <cstring>
-
-bool State::operator<(const State& s) const {
-    // return eval() < s.eval();
-    return player.score < s.player.score;
+bool State::isRecipeDoable(const int& i) const {
+    return recipesTodoMask & 1 << i;
 }
 
-std::ostream& operator<<(std::ostream& out, const State& s) {
-    out << s.player << "\n";
-    out << "ordersDone: " << s.getOrdersDone() << "\n";
-
-    for (const auto& hist : s.history)
-        out << hist << " ";
-
-    // int spellCount = Battle::spells.size();
-    // out << "Spells:\n";
-    // for (int i = 0; i < spellCount; ++i) {
-    //     auto& spell = Battle::spells[i];
-    //     auto tmp = spell.castable;
-    //     spell.castable = s.isCastable(i);
-    //     out << "\t" << spell << "\n";
-    //     spell.castable = tmp;
-    // }
-
-    // int orderCount = Battle::orders.size();
-    // out << "Orders:\n";
-    // for (int i = 0; i < orderCount; ++i) {
-    //     const auto& order = Battle::orders[i];
-    //     out << "\t" << (s.isOrderDone(i) ? "DONE " : "UNDONE ") << order << "\n";
-    // }
-    return out;
-}
-
-int State::getNeighbors(std::array<State, MAX_NEIGHBORS>& neighbours) const {
-
+int State::getNeighbors(State* neighbors) const {
     int neighborCount = 0;
 
-    int ordersUndoneMask = this->ordersUndoneMask;
-    while (ordersUndoneMask) {
-        int nextOrderBit = low(ordersUndoneMask);
-        int i = bits(nextOrderBit);
-        const auto& order = Battle::orders[i];
-
-        if (player.inv.canApply(order.delta)) {
-            auto& neighbor = neighbours[neighborCount++];
-            neighbor = *this;
-            neighbor.player.inv = player.inv + order.delta;
-            neighbor.player.score =  player.score + 100 * gamma * order.price + gamma * order.delta.eval();
-            neighbor.castableSpellsMask = castableSpellsMask;
-            neighbor.ordersUndoneMask = this->ordersUndoneMask ^ nextOrderBit;
-            neighbor.gamma = gamma * DECAY;
-
-            neighbor.history.push_back(player.inv);
-
-            if (firstAction == nullptr)
-                neighbor.firstAction = &Battle::orders[i];
-        }
-
-        ordersUndoneMask ^= nextOrderBit;
-    }
-
-    int castableSpellsMask = this->castableSpellsMask;
-    while (castableSpellsMask) {
-        int nextSpellBit = low(castableSpellsMask);
-        int i = bits(nextSpellBit);
-        const auto& s = Battle::spells[i];
-
-        for (int times = 0; times < s.maxTimes; ++times) {
-            const auto& repeatedDelta = s.repeatedDeltas[times];
-
-            if (player.inv.canApply(repeatedDelta)) {
-                auto& neighbor = neighbours[neighborCount++];
-                // std::memcpy(&neighbor, this, sizeof(State));
-                neighbor = *this;
-                neighbor.player.inv += repeatedDelta;
-                neighbor.player.score += repeatedDelta.eval() * gamma;
-                neighbor.castableSpellsMask ^= nextSpellBit;
-                neighbor.gamma *= DECAY;
-
-                neighbor.history = history;
-                neighbor.history.push_back(player.inv);
-
-                if (firstAction == nullptr) {
-                    Battle::tSpells.push_back(s);
-                    Battle::tSpells.back().curTimes = times + 1;
-                    neighbor.firstAction = &Battle::tSpells.back();
-                }
-            }
-        }
-
-        castableSpellsMask ^= nextSpellBit;
-    }
-
-    auto& neighbor = neighbours[neighborCount++];
-    // std::memcpy(&neighbor, this, sizeof(State)); 
-    neighbor = *this;
-    neighbor.castableSpellsMask = (1 << int(Battle::spells.size())) - 1;
-    neighbor.gamma *= DECAY;
-
-    neighbor.history = history;
-    neighbor.history.push_back(player.inv);
-    if (firstAction == nullptr)
-        neighbor.firstAction = &Battle::rest;
-
-    assert(neighborCount <= MAX_NEIGHBORS);
+    getSpellActions(neighbors, neighborCount);
+    getOrderActions(neighbors, neighborCount);
+    getRecipeActions(neighbors, neighborCount);
+    getRestAction(neighbors, neighborCount);
 
     return neighborCount;
 }
 
+void State::getSpellActions(State* neighbors, int& neighborCount) const {
+    int castableSpellsMask = this->castableSpellsMask;
+    while (castableSpellsMask) {
+        int nextSpellBit = low(castableSpellsMask);
+        assert(__builtin_popcount(nextSpellBit) == 1);
+
+        int i = bits(nextSpellBit);
+        assert(nextSpellBit == (1 << i));
+        assert(0 <= i && i < Battle::spellCount);
+
+        const auto& s = Battle::spells[i];
+        for (int j = 0; j < s.maxTimes; ++j) {
+            const auto& delta = s.repeatedDeltas[j];
+            if (!player.inv.canApply(delta))
+                break;
+
+            auto& neighbor = neighbors[neighborCount++];
+            std::memcpy(&neighbor, this, sizeof(State));
+            neighbor.player.inv += delta;
+            neighbor.castableSpellsMask ^= nextSpellBit;
+            neighbor.gamma *= DECAY;
+            neighbor.evaluation += delta.eval() - 0.01f;
+
+            if (firstAction == nullptr) {
+                auto& customSpell = Battle::customSpells[Battle::customSpellCount++];
+                customSpell = s;
+                customSpell.curTimes = j + 1;
+                neighbor.firstAction = &customSpell;
+            }
+        }
+
+        assert((castableSpellsMask & nextSpellBit) == nextSpellBit);
+        castableSpellsMask ^= nextSpellBit;
+    }
+}
+
+void State::getOrderActions(State* neighbors, int& neighborCount) const {
+    int ordersTodoMask = this->ordersTodoMask;
+    while (ordersTodoMask) {
+        int nextOrderBit = low(ordersTodoMask);
+        assert(__builtin_popcount(nextOrderBit) == 1);
+
+        int i = bits(nextOrderBit);
+        assert(nextOrderBit == (1 << i));
+        assert(0 <= i && i < Battle::orderCount);
+
+        const auto& order = Battle::orders[i];
+        if (player.inv.canApply(order.delta)) {
+            auto& neighbor = neighbors[neighborCount++];
+            std::memcpy(&neighbor, this, sizeof(State));
+            neighbor.player.inv += order.delta;
+            neighbor.player.score += order.price;
+            neighbor.ordersTodoMask ^= nextOrderBit;
+            neighbor.gamma *= DECAY;
+            neighbor.evaluation += gamma * order.price;
+
+            if (firstAction == nullptr)
+                neighbor.firstAction = &order;
+        }
+
+        assert((ordersTodoMask & nextOrderBit) == nextOrderBit);
+        ordersTodoMask ^= nextOrderBit;
+    }
+}
+
+void State::getRecipeActions(State* neighbors, int& neighborCount) const {
+    // int recipesTodoMask = this->recipesTodoMask;
+    // while (recipesTodoMask) {
+    //     int nextRecipeBit = low(recipesTodoMask);
+    //     assert(__builtin_popcount(nextRecipeBit) == 1);
+
+    //     int i = bits(nextRecipeBit);
+    //     assert(nextRecipeBit == (1 << i));
+    //     assert(0 <= i && i < Battle::recipeCount);
+
+    //     const auto& recipe = Battle::recipes[i];
+
+    // }
+}
+
+void State::getRestAction(State* neighbors, int& neighborCount) const {
+    auto& neighbor = neighbors[neighborCount++];
+    std::memcpy(&neighbor, this, sizeof(State));
+    int turnOnCount = Battle::spellCount - __builtin_popcount(neighbor.castableSpellsMask);
+    neighbor.castableSpellsMask = (1 << Battle::spellCount) - 1;
+    neighbor.gamma *= DECAY;
+    neighbor.evaluation += turnOnCount * 0.01f;
+
+    if (firstAction == nullptr)
+        neighbor.firstAction = &Battle::rest;
+}
+
+int Battle::spellCount;
+int Battle::orderCount;
+int Battle::recipeCount;
+int Battle::customSpellCount = 0;
+
+std::array<Spell, Battle::MAX_SPELL_COUNT> Battle::spells;
+std::array<Order, Battle::MAX_ORDER_COUNT> Battle::orders;
+std::array<Recipe, Battle::MAX_RECIPE_COUNT> Battle::recipes;
+std::array<Spell, Battle::MAX_SPELL_COUNT> Battle::customSpells;
+Rest Battle::rest;
+
+int Battle::playerOrdersDone = 0;
+int Battle::enemyOrdersDone = 0;
+
 Witch Battle::player;
 Witch Battle::opponent;
 
-std::vector<Spell> Battle::spells;
-std::vector<Order> Battle::orders;
-std::vector<Recipe> Battle::recipes;
-
-Rest Battle::rest;
-
-std::vector<Spell> Battle::tSpells;
-
 int Battle::roundNumber = 0;
-int Battle::enemyOrdersDone = 0;
-int Battle::playerOrdersDone = 0;
 
 void Battle::start() {
-    orders.reserve(100);
-    spells.reserve(100);
-    recipes.reserve(100);
-    tSpells.reserve(100);
-
     while (true) {
+        resetData();
         readData();
-        #ifdef DEBUG
+        // #ifdef DEBUG
         // writeData();
-        #endif
+        // #endif
         pickAction()->print();
-
-        orders.clear();
-        spells.clear();
-        recipes.clear();
-        tSpells.clear();
-        
         ++roundNumber;
     }
+}
+
+void Battle::resetData() {
+    spellCount = orderCount = recipeCount = customSpellCount = 0;
 }
 
 void Battle::readData() {
@@ -580,11 +604,11 @@ void Battle::readData() {
         std::cin >> castable >> repeatable;
 
         if (actionStr == "BREW")
-            orders.emplace_back(actionId, delta, price);
+            orders[orderCount++] = Order(actionId, delta, price);
         else if (actionStr == "CAST")
-            spells.emplace_back(actionId, delta, castable, repeatable);
+            spells[spellCount++] = Spell(actionId, delta, castable, repeatable);
         else if (actionStr == "LEARN")
-            recipes.emplace_back(actionId, delta, tomeIndex, taxCount, repeatable);
+            recipes[recipeCount++] = Recipe(actionId, delta, tomeIndex, taxCount, repeatable);
         else
             assert(actionStr == "OPPONENT_CAST");
     }     
@@ -601,8 +625,12 @@ void Battle::readData() {
     static float lastEnemyScore = 0;
     if (opponent.score != lastEnemyScore) {
         lastEnemyScore = opponent.score;
-        ++Options::enemyOrdersDone;
+        ++enemyOrdersDone;
     }
+
+    assert(spellCount <= MAX_SPELL_COUNT);
+    assert(orderCount <= MAX_ORDER_COUNT);
+    assert(recipeCount <= MAX_RECIPE_COUNT);
 }
 
 #ifdef DEBUG
@@ -617,7 +645,7 @@ void Battle::writeData() {
 #endif
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 10)
+    if (roundNumber < 6)
         return chooseRecipe();
     return search();
 }
@@ -627,57 +655,65 @@ const Action* Battle::chooseRecipe() {
 }
 
 const Action* Battle::search() {
-    State initialState = getInitialState();
-    std::priority_queue<State> q, layer;
-    q.push(initialState);
+    static constexpr int MAX_STATES = BEAM_WIDTH * State::MAX_NEIGHBORS;
+    static std::array<State, MAX_STATES> current, next;
+    int currentCount = 1, nextCount = 0;
+    current[0] = getInitialState();
+
+    std::array<State, State::MAX_NEIGHBORS> neighbors;
 
     float timeLimit = roundNumber == 0 ? 1000 : 50;
-    std::array<State, State::MAX_NEIGHBORS> neighbors;
     int depth = 0;
 
     for (Timer timer(timeLimit); timer.isTimeLeft(); ++depth) {       
-        assert(!q.empty());
-        // debug("DEPTH:", depth, q.top());
+        assert(currentCount > 0);
 
-        for (int i = 0; i < beamWidth; ++i) {
-            const auto state = q.top();
-            q.pop();
-
-            int neighborCount = state.getNeighbors(neighbors);
-            for (int i = 0; i < neighborCount; ++i)
-                layer.push(neighbors[i]);
-
-            if (i != beamWidth - 1 && q.empty()) {
-                debug("Exiting loop early - not enough states!");
-                break;
-            }
+        int considerCount = std::min(BEAM_WIDTH, currentCount);
+        for (int i = 0; i < considerCount; ++i) {
+            const auto& state = current[i];
+            nextCount += state.getNeighbors(next.data() + nextCount);
         }
 
-        while (!q.empty())
-            q.pop();
-        q.swap(layer);
+        assert(nextCount > 0);
+        considerCount = std::min(BEAM_WIDTH, nextCount);
+        std::partial_sort(next.data(),
+            next.data() + considerCount,
+            next.data() + nextCount,
+            std::greater<State>());
+
+        std::swap(current, next);
+        currentCount = nextCount;
+        nextCount = 0;
     }
 
-    assert(!q.empty());
-    const auto& finalState = q.top();
+    assert(currentCount > 0);
+    const auto& finalState = current[0];
     debug(finalState);
     assert(finalState.firstAction != nullptr);
     debug("Beam search depth:", depth);
+
+    assert(customSpellCount <= MAX_SPELL_COUNT);
 
     return finalState.firstAction;
 }
 
 State Battle::getInitialState() {
     State initialState;
-    initialState.player = player;
-    initialState.player.score = 0.f;
-    initialState.firstAction = nullptr;
+    initialState.player.inv = player.inv;
+    initialState.player.score = 0;
+
     initialState.castableSpellsMask = 0;
-    for (int i = 0; i < int(spells.size()); ++i)
+    for (int i = 0; i < spellCount; ++i)
         if (spells[i].castable)
             initialState.castableSpellsMask |= 1 << i;
-    initialState.ordersUndoneMask = (1 << int(orders.size())) - 1;
+
+    initialState.ordersTodoMask = (1 << orderCount) - 1;
+    initialState.recipesTodoMask = (1 << recipeCount) - 1;
     initialState.gamma = 1.f;
+
+    initialState.evaluation = initialState.player.inv.eval() +
+        __builtin_popcount(initialState.castableSpellsMask) * 0.01f;
+
     return initialState;
 }
 
