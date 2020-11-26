@@ -24,46 +24,6 @@ std::ostream& operator<<(std::ostream& out, const Order& o) {
         << "price=" << o.price;
 }
 
-Spell::Spell(const int& id, const Delta& delta,
-    const bool& castable, const bool& repeatable) :
-    Action(id, delta), castable(castable), repeatable(repeatable) {
-
-    if (repeatable) {
-        int provide = 0, supply = 0;
-        for (int i = 0; i < 4; ++i)
-            if (delta[i] < 0)
-                provide -= delta[i];
-            else
-                supply += delta[i];
-
-        assert(provide >= 0 && supply >= 0);
-        
-        maxTimes = 10;
-        if (provide > 0)
-            maxTimes = std::min(maxTimes, 10 / provide);
-        if (supply > 0)
-            maxTimes = std::min(maxTimes, 10 / supply);
-    }
-
-    assert(maxTimes <= MAX_REPEATED_DELTA);
-
-    repeatedDeltas[0] = delta;
-    for (int i = 1; i < maxTimes; ++i)
-        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
-}
-
-void Spell::print() const {
-    assert(curTimes >= 1);
-    std::cout << "CAST " << id << " " << curTimes << std::endl;
-}
-
-std::ostream& operator<<(std::ostream& out, const Spell& s) {
-    return out << "SPELL: id=" << s.id 
-        << ", delta=" << s.delta << ", "
-        << "castable=" << s.castable << ", "
-        << "maxTimes=" << s.maxTimes;
-}
-
 Recipe::Recipe(const int& id, const Delta& delta,
     const int& tomeIndex, const int& taxCount, const bool& repeatable) :
     Action(id, delta), tomeIndex(tomeIndex), taxCount(taxCount), repeatable(repeatable) {
@@ -80,6 +40,51 @@ std::ostream& operator<<(std::ostream& out, const Recipe& r) {
         << "tomeIndex=" << r.tomeIndex << ", "
         << "taxCount=" << r.taxCount << ", "
         << "repeatable=" << r.repeatable;
+}
+
+Spell::Spell(const int& id, const Delta& delta,
+    const bool& castable, const bool& repeatable) :
+    Action(id, delta), castable(castable), repeatable(repeatable) {
+
+    if (repeatable) {
+        int provide = 0, supply = 0;
+        for (int i = 0; i < 4; ++i)
+            if (delta[i] < 0)
+                provide -= delta[i];
+            else
+                supply += delta[i];
+
+        assert(provide >= 0 && supply >= 0);
+
+        maxTimes = 10;
+        if (provide > 0)
+            maxTimes = std::min(maxTimes, 10 / provide);
+        if (supply > 0)
+            maxTimes = std::min(maxTimes, 10 / supply);
+    }
+
+    assert(maxTimes <= MAX_REPEATED_DELTA);
+
+    repeatedDeltas[0] = delta;
+    for (int i = 1; i < maxTimes; ++i)
+        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
+}
+
+Spell::Spell(const Recipe& recipe) :
+    Spell(recipe.id, recipe.delta, true, recipe.repeatable) {
+
+}
+
+void Spell::print() const {
+    assert(curTimes >= 1);
+    std::cout << "CAST " << id << " " << curTimes << std::endl;
+}
+
+std::ostream& operator<<(std::ostream& out, const Spell& s) {
+    return out << "SPELL: id=" << s.id 
+        << ", delta=" << s.delta << ", "
+        << "castable=" << s.castable << ", "
+        << "maxTimes=" << s.maxTimes;
 }
 
 void Rest::print() const {

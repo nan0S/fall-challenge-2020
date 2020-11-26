@@ -181,6 +181,19 @@ struct Order : public Action {
     friend std::ostream& operator<<(std::ostream& out, const Order& o);
 };
 
+struct Recipe : public Action {
+    int tomeIndex;
+    int taxCount;
+    bool repeatable;
+
+    Recipe() = default;
+    Recipe(const int& id, const Delta& delta,
+        const int &tomeIndex, const int& taxCount, const bool& repeatable);
+    void print() const override;
+
+    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
+};
+
 struct Spell : public Action {
     bool castable;
     bool repeatable;
@@ -193,22 +206,10 @@ struct Spell : public Action {
     Spell() = default;
     Spell(const int& id, const Delta& delta,
         const bool& castable, const bool& repeatable);
+    Spell(const Recipe& recipe);
     void print() const override;
 
     friend std::ostream& operator<<(std::ostream& out, const Spell& s);
-};
-
-struct Recipe : public Action {
-    int tomeIndex;
-    int taxCount;
-    bool repeatable;
-
-    Recipe() = default;
-    Recipe(const int& id, const Delta& delta,
-        const int &tomeIndex, const int& taxCount, const bool& repeatable);
-    void print() const override;
-
-    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
 };
 
 struct Rest : public Action {
@@ -255,46 +256,6 @@ std::ostream& operator<<(std::ostream& out, const Order& o) {
         << "price=" << o.price;
 }
 
-Spell::Spell(const int& id, const Delta& delta,
-    const bool& castable, const bool& repeatable) :
-    Action(id, delta), castable(castable), repeatable(repeatable) {
-
-    if (repeatable) {
-        int provide = 0, supply = 0;
-        for (int i = 0; i < 4; ++i)
-            if (delta[i] < 0)
-                provide -= delta[i];
-            else
-                supply += delta[i];
-
-        assert(provide >= 0 && supply >= 0);
-        
-        maxTimes = 10;
-        if (provide > 0)
-            maxTimes = std::min(maxTimes, 10 / provide);
-        if (supply > 0)
-            maxTimes = std::min(maxTimes, 10 / supply);
-    }
-
-    assert(maxTimes <= MAX_REPEATED_DELTA);
-
-    repeatedDeltas[0] = delta;
-    for (int i = 1; i < maxTimes; ++i)
-        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
-}
-
-void Spell::print() const {
-    assert(curTimes >= 1);
-    std::cout << "CAST " << id << " " << curTimes << std::endl;
-}
-
-std::ostream& operator<<(std::ostream& out, const Spell& s) {
-    return out << "SPELL: id=" << s.id 
-        << ", delta=" << s.delta << ", "
-        << "castable=" << s.castable << ", "
-        << "maxTimes=" << s.maxTimes;
-}
-
 Recipe::Recipe(const int& id, const Delta& delta,
     const int& tomeIndex, const int& taxCount, const bool& repeatable) :
     Action(id, delta), tomeIndex(tomeIndex), taxCount(taxCount), repeatable(repeatable) {
@@ -311,6 +272,51 @@ std::ostream& operator<<(std::ostream& out, const Recipe& r) {
         << "tomeIndex=" << r.tomeIndex << ", "
         << "taxCount=" << r.taxCount << ", "
         << "repeatable=" << r.repeatable;
+}
+
+Spell::Spell(const int& id, const Delta& delta,
+    const bool& castable, const bool& repeatable) :
+    Action(id, delta), castable(castable), repeatable(repeatable) {
+
+    if (repeatable) {
+        int provide = 0, supply = 0;
+        for (int i = 0; i < 4; ++i)
+            if (delta[i] < 0)
+                provide -= delta[i];
+            else
+                supply += delta[i];
+
+        assert(provide >= 0 && supply >= 0);
+
+        maxTimes = 10;
+        if (provide > 0)
+            maxTimes = std::min(maxTimes, 10 / provide);
+        if (supply > 0)
+            maxTimes = std::min(maxTimes, 10 / supply);
+    }
+
+    assert(maxTimes <= MAX_REPEATED_DELTA);
+
+    repeatedDeltas[0] = delta;
+    for (int i = 1; i < maxTimes; ++i)
+        repeatedDeltas[i] = repeatedDeltas[i - 1] + delta;
+}
+
+Spell::Spell(const Recipe& recipe) :
+    Spell(recipe.id, recipe.delta, true, recipe.repeatable) {
+
+}
+
+void Spell::print() const {
+    assert(curTimes >= 1);
+    std::cout << "CAST " << id << " " << curTimes << std::endl;
+}
+
+std::ostream& operator<<(std::ostream& out, const Spell& s) {
+    return out << "SPELL: id=" << s.id 
+        << ", delta=" << s.delta << ", "
+        << "castable=" << s.castable << ", "
+        << "maxTimes=" << s.maxTimes;
 }
 
 void Rest::print() const {
@@ -359,6 +365,7 @@ public:
     static std::array<Order, MAX_ORDER_COUNT> orders;
     static std::array<Recipe, MAX_RECIPE_COUNT> recipes;
     static std::array<Spell, MAX_SPELL_COUNT> customSpells;
+    static std::array<Spell, MAX_RECIPE_COUNT> spellsFromRecipes;
     static Rest rest;
 
     static int playerOrdersDone;
@@ -368,7 +375,8 @@ public:
     static Witch opponent;
 
     static int roundNumber;
-    static constexpr int BEAM_WIDTH = 600;
+    static int recipeDoneCount;
+    static constexpr int BEAM_WIDTH = 2000;
 };
 
 struct State {
@@ -376,13 +384,17 @@ struct State {
     int castableSpellsMask;
     int ordersTodoMask;
     int recipesTodoMask;
+    int castableSpellsFromRecipesMask;
     float gamma;
     eval_t evaluation;
+    int ordersDone;
+    int recipesLearnt;
 
     const Action* firstAction;
 
     static constexpr int MAX_NEIGHBORS = 30;
-    static constexpr float DECAY = 0.95f;
+    static constexpr float DECAY = 0.97f;
+    static constexpr float LEARN_DECAY = 0.6f;
 
     int getNeighbors(State* neighbors) const;
     void getSpellActions(State* neighbors, int& neighborCount) const;
@@ -403,6 +415,7 @@ struct State {
 #include <cassert>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 
 bool State::operator<(const State& s) const {
     return evaluation < s.evaluation;
@@ -413,7 +426,11 @@ bool State::operator>(const State& s) const {
 }
 
 std::ostream& operator<<(std::ostream& out, const State& s) {
-    out << s.player << s.gamma << "\n";
+    out << s.player << "\n";
+    out << "gamma=" << s.gamma << "\n";
+    out << "evaluation=" << s.evaluation << "\n";
+    out << "ordersDone=" << s.ordersDone << "\n";
+    out << "recipesLearnt=" << s.recipesLearnt << "\n";
 
     out << "SPELLS:\n";
     for (int i = 0; i < Battle::spellCount; ++i) {
@@ -450,6 +467,11 @@ bool State::isRecipeDoable(const int& i) const {
 
 int State::getNeighbors(State* neighbors) const {
     int neighborCount = 0;
+
+    if (ordersDone == 6) {
+        getRestAction(neighbors, neighborCount);
+        return neighborCount;
+    }
 
     getSpellActions(neighbors, neighborCount);
     getOrderActions(neighbors, neighborCount);
@@ -513,7 +535,9 @@ void State::getOrderActions(State* neighbors, int& neighborCount) const {
             neighbor.player.score += order.price;
             neighbor.ordersTodoMask ^= nextOrderBit;
             neighbor.gamma *= DECAY;
-            neighbor.evaluation += gamma * order.price;
+            neighbor.evaluation += 100 * gamma * order.price;
+            if (++neighbor.ordersDone == 6)
+                neighbor.evaluation += 1e4;
 
             if (firstAction == nullptr)
                 neighbor.firstAction = &order;
@@ -525,25 +549,49 @@ void State::getOrderActions(State* neighbors, int& neighborCount) const {
 }
 
 void State::getRecipeActions(State* neighbors, int& neighborCount) const {
-    // int recipesTodoMask = this->recipesTodoMask;
-    // while (recipesTodoMask) {
-    //     int nextRecipeBit = low(recipesTodoMask);
-    //     assert(__builtin_popcount(nextRecipeBit) == 1);
+    for (int i = 0; i < Battle::recipeCount; ++i)
+        if (recipesTodoMask & 1 << i) {
+            const auto& recipe = Battle::recipes[i];
 
-    //     int i = bits(nextRecipeBit);
-    //     assert(nextRecipeBit == (1 << i));
-    //     assert(0 <= i && i < Battle::recipeCount);
+            if (player.inv[0] >= recipe.tomeIndex) {
+                auto& neighbor = neighbors[neighborCount++];
+                std::memcpy(&neighbor, this, sizeof(State));
+                neighbor.recipesTodoMask ^= 1 << i;
+                neighbor.gamma *= DECAY;
+                neighbor.evaluation += gamma * std::pow(LEARN_DECAY, recipesLearnt) *
+                    (1 - recipe.tomeIndex / 3.f + recipe.taxCount / 6.f);
+                neighbor.recipesLearnt++;
 
-    //     const auto& recipe = Battle::recipes[i];
+                if (firstAction == 0)
+                    neighbor.firstAction = &recipe;
+            }
+        }
+        else if (castableSpellsFromRecipesMask & 1 << i) {
+            const auto& s = Battle::spellsFromRecipes[i];
+            for (int j = 0; j < s.maxTimes; ++j) {
+                const auto& delta = s.repeatedDeltas[j];
+                if (!player.inv.canApply(delta))
+                    break;
 
-    // }
+                auto& neighbor = neighbors[neighborCount++];
+                std::memcpy(&neighbor, this, sizeof(State));
+                neighbor.player.inv += delta;
+                neighbor.castableSpellsFromRecipesMask ^= 1 << i;
+                neighbor.gamma *= DECAY;
+                neighbor.evaluation += delta.eval() - 0.01f;
+
+                assert(firstAction != nullptr);
+            }
+        }
 }
 
 void State::getRestAction(State* neighbors, int& neighborCount) const {
     auto& neighbor = neighbors[neighborCount++];
     std::memcpy(&neighbor, this, sizeof(State));
-    int turnOnCount = Battle::spellCount - __builtin_popcount(neighbor.castableSpellsMask);
+    int turnOnCount = Battle::spellCount - __builtin_popcount(neighbor.castableSpellsMask) +
+        Battle::recipeCount - __builtin_popcount(neighbor.castableSpellsFromRecipesMask);
     neighbor.castableSpellsMask = (1 << Battle::spellCount) - 1;
+    neighbor.castableSpellsFromRecipesMask = (1 << Battle::recipeCount) - 1;
     neighbor.gamma *= DECAY;
     neighbor.evaluation += turnOnCount * 0.01f;
 
@@ -560,6 +608,7 @@ std::array<Spell, Battle::MAX_SPELL_COUNT> Battle::spells;
 std::array<Order, Battle::MAX_ORDER_COUNT> Battle::orders;
 std::array<Recipe, Battle::MAX_RECIPE_COUNT> Battle::recipes;
 std::array<Spell, Battle::MAX_SPELL_COUNT> Battle::customSpells;
+std::array<Spell, Battle::MAX_RECIPE_COUNT> Battle::spellsFromRecipes;
 Rest Battle::rest;
 
 int Battle::playerOrdersDone = 0;
@@ -569,6 +618,7 @@ Witch Battle::player;
 Witch Battle::opponent;
 
 int Battle::roundNumber = 0;
+int Battle::recipeDoneCount = 0;
 
 void Battle::start() {
     while (true) {
@@ -577,7 +627,15 @@ void Battle::start() {
         // #ifdef DEBUG
         // writeData();
         // #endif
-        pickAction()->print();
+
+        const Action* action = pickAction();
+        if (dynamic_cast<const Recipe*>(action)) {
+            debug("MAKING RECIPE");
+            ++recipeDoneCount;
+            debug(recipeDoneCount);
+        }
+        action->print();
+
         ++roundNumber;
     }
 }
@@ -607,8 +665,11 @@ void Battle::readData() {
             orders[orderCount++] = Order(actionId, delta, price);
         else if (actionStr == "CAST")
             spells[spellCount++] = Spell(actionId, delta, castable, repeatable);
-        else if (actionStr == "LEARN")
-            recipes[recipeCount++] = Recipe(actionId, delta, tomeIndex, taxCount, repeatable);
+        else if (actionStr == "LEARN") {
+            recipes[recipeCount] = Recipe(actionId, delta, tomeIndex, taxCount, repeatable);
+            spellsFromRecipes[recipeCount] = recipes[recipeCount];
+            ++recipeCount;
+        }
         else
             assert(actionStr == "OPPONENT_CAST");
     }     
@@ -640,13 +701,15 @@ void Battle::writeData() {
     for (const auto& spell : spells)
         debug(spell);
     for (const auto& recipe : recipes)
-        debug(recipe);    
+        debug(recipe);
+    for (const auto& spellFromRecipe : spellsFromRecipes)
+        debug(spellFromRecipe);
 }
 #endif
 
 const Action* Battle::pickAction() {
-    if (roundNumber < 6)
-        return chooseRecipe();
+    // if (roundNumber < 6)
+        // return chooseRecipe();
     return search();
 }
 
@@ -709,10 +772,14 @@ State Battle::getInitialState() {
 
     initialState.ordersTodoMask = (1 << orderCount) - 1;
     initialState.recipesTodoMask = (1 << recipeCount) - 1;
+    initialState.castableSpellsFromRecipesMask = (1 << recipeCount) - 1;
     initialState.gamma = 1.f;
 
     initialState.evaluation = initialState.player.inv.eval() +
         __builtin_popcount(initialState.castableSpellsMask) * 0.01f;
+
+    initialState.ordersDone = playerOrdersDone;
+    initialState.recipesLearnt = recipeDoneCount;
 
     return initialState;
 }

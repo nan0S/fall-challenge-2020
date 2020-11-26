@@ -38,6 +38,7 @@ public:
     static std::array<Order, MAX_ORDER_COUNT> orders;
     static std::array<Recipe, MAX_RECIPE_COUNT> recipes;
     static std::array<Spell, MAX_SPELL_COUNT> customSpells;
+    static std::array<Spell, MAX_RECIPE_COUNT> spellsFromRecipes;
     static Rest rest;
 
     static int playerOrdersDone;
@@ -47,7 +48,8 @@ public:
     static Witch opponent;
 
     static int roundNumber;
-    static constexpr int BEAM_WIDTH = 600;
+    static int recipeDoneCount;
+    static constexpr int BEAM_WIDTH = 2000;
 };
 
 struct State {
@@ -55,13 +57,17 @@ struct State {
     int castableSpellsMask;
     int ordersTodoMask;
     int recipesTodoMask;
+    int castableSpellsFromRecipesMask;
     float gamma;
     eval_t evaluation;
+    int ordersDone;
+    int recipesLearnt;
 
     const Action* firstAction;
 
     static constexpr int MAX_NEIGHBORS = 30;
-    static constexpr float DECAY = 0.95f;
+    static constexpr float DECAY = 0.97f;
+    static constexpr float LEARN_DECAY = 0.6f;
 
     int getNeighbors(State* neighbors) const;
     void getSpellActions(State* neighbors, int& neighborCount) const;

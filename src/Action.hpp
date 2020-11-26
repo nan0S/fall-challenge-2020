@@ -26,6 +26,19 @@ struct Order : public Action {
     friend std::ostream& operator<<(std::ostream& out, const Order& o);
 };
 
+struct Recipe : public Action {
+    int tomeIndex;
+    int taxCount;
+    bool repeatable;
+
+    Recipe() = default;
+    Recipe(const int& id, const Delta& delta,
+        const int &tomeIndex, const int& taxCount, const bool& repeatable);
+    void print() const override;
+
+    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
+};
+
 struct Spell : public Action {
     bool castable;
     bool repeatable;
@@ -38,22 +51,10 @@ struct Spell : public Action {
     Spell() = default;
     Spell(const int& id, const Delta& delta,
         const bool& castable, const bool& repeatable);
+    Spell(const Recipe& recipe);
     void print() const override;
 
     friend std::ostream& operator<<(std::ostream& out, const Spell& s);
-};
-
-struct Recipe : public Action {
-    int tomeIndex;
-    int taxCount;
-    bool repeatable;
-
-    Recipe() = default;
-    Recipe(const int& id, const Delta& delta,
-        const int &tomeIndex, const int& taxCount, const bool& repeatable);
-    void print() const override;
-
-    friend std::ostream& operator<<(std::ostream& out, const Recipe& r);
 };
 
 struct Rest : public Action {
